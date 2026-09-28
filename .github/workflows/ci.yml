@@ -20,7 +20,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: npm
       - name: Install
         run: npm install
       - name: Syntax check
@@ -31,7 +30,7 @@ jobs:
   native-macos:
     if: startsWith(github.head_ref, '09-') || startsWith(github.head_ref, '10-') || github.ref == 'refs/heads/main'
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,3 +40,9 @@ jobs:
           node-version: '22'
       - name: Build native macOS services
         run: swift build -c release --package-path native/macos
+      - name: Check Rust Whisper core
+        run: cargo check --manifest-path native/rust/whisper-core/Cargo.toml
+      - name: Build Rust Whisper core with Apple acceleration
+        run: cargo build --release --manifest-path native/rust/whisper-core/Cargo.toml --features metal,coreml
+      - name: Rust tests
+        run: cargo test --manifest-path native/rust/whisper-core/Cargo.toml

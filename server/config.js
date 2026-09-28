@@ -13,7 +13,18 @@ function defaults() {
     localChatModel: process.env.OLI_LOCAL_CHAT_MODEL || 'llama-3.2-3b',
     localTranscriptionModel: process.env.OLI_LOCAL_TRANSCRIPTION_MODEL || 'whisper-large-v3-turbo',
     aiTimeoutMs: Number(process.env.OLI_AI_TIMEOUT_MS || 15000),
-    retentionDays: Number(process.env.OLI_RETENTION_DAYS || 0)
+    retentionDays: Number(process.env.OLI_RETENTION_DAYS || 0),
+    whisperBinaryPath: process.env.OLI_WHISPER_BINARY_PATH || '',
+    whisperModelPath: process.env.OLI_WHISPER_MODEL_PATH || '',
+    whisperLanguage: process.env.OLI_WHISPER_LANGUAGE || 'en',
+    whisperThreads: Number(process.env.OLI_WHISPER_THREADS || 4),
+    knowledgeDir: process.env.OLI_KNOWLEDGE_DIR || '',
+    obsidianVaultPath: process.env.OLI_OBSIDIAN_VAULT_PATH || '',
+    localEmbeddingUrl: process.env.OLI_LOCAL_EMBEDDING_URL || '',
+    localEmbeddingModel: process.env.OLI_LOCAL_EMBEDDING_MODEL || 'nomic-embed-text',
+    embeddingDimensions: Number(process.env.OLI_EMBEDDING_DIMENSIONS || 768),
+    crmWebhookUrl: process.env.OLI_CRM_WEBHOOK_URL || '',
+    crmWebhookToken: process.env.OLI_CRM_WEBHOOK_TOKEN || ''
   };
 }
 
@@ -39,7 +50,18 @@ export function saveConfig(configPath, cfg) {
     localChatModel: String(cfg.localChatModel || 'llama-3.2-3b'),
     localTranscriptionModel: String(cfg.localTranscriptionModel || 'whisper-large-v3-turbo'),
     aiTimeoutMs: Math.min(Math.max(Number(cfg.aiTimeoutMs) || 15000, 1000), 120000),
-    retentionDays: Math.min(Math.max(Number(cfg.retentionDays) || 0, 0), 3650)
+    retentionDays: Math.min(Math.max(Number(cfg.retentionDays) || 0, 0), 3650),
+    whisperBinaryPath: String(cfg.whisperBinaryPath || ''),
+    whisperModelPath: String(cfg.whisperModelPath || ''),
+    whisperLanguage: String(cfg.whisperLanguage || 'en'),
+    whisperThreads: Math.min(Math.max(Number(cfg.whisperThreads) || 4, 1), 64),
+    knowledgeDir: String(cfg.knowledgeDir || ''),
+    obsidianVaultPath: String(cfg.obsidianVaultPath || ''),
+    localEmbeddingUrl: String(cfg.localEmbeddingUrl || ''),
+    localEmbeddingModel: String(cfg.localEmbeddingModel || 'nomic-embed-text'),
+    embeddingDimensions: Math.min(Math.max(Number(cfg.embeddingDimensions) || 768, 32), 4096),
+    crmWebhookUrl: String(cfg.crmWebhookUrl || ''),
+    crmWebhookToken: String(cfg.crmWebhookToken || '')
   };
   fs.writeFileSync(configPath, JSON.stringify(clean, null, 2), { mode: 0o600 });
   try { fs.chmodSync(configPath, 0o600); } catch {}
@@ -61,6 +83,18 @@ export function redact(cfg) {
     localChatModel: cfg.localChatModel,
     localTranscriptionModel: cfg.localTranscriptionModel,
     aiTimeoutMs: cfg.aiTimeoutMs,
-    retentionDays: cfg.retentionDays
+    retentionDays: cfg.retentionDays,
+    whisperBinaryPath: cfg.whisperBinaryPath,
+    whisperModelPath: cfg.whisperModelPath,
+    whisperLanguage: cfg.whisperLanguage,
+    whisperThreads: cfg.whisperThreads,
+    knowledgeDir: cfg.knowledgeDir,
+    obsidianVaultPath: cfg.obsidianVaultPath,
+    localEmbeddingUrl: cfg.localEmbeddingUrl,
+    localEmbeddingModel: cfg.localEmbeddingModel,
+    embeddingDimensions: cfg.embeddingDimensions,
+    crmWebhookUrl: cfg.crmWebhookUrl,
+    crmWebhookToken: cfg.crmWebhookToken ? '••••••••' + cfg.crmWebhookToken.slice(-4) : '',
+    crmWebhookTokenSet: !!cfg.crmWebhookToken
   };
 }

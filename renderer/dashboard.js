@@ -60,7 +60,7 @@ async function loadHistory(query = '') {
 }
 
 async function showMeeting(id) {
-  const { meeting, segments, actions } = await api('/meetings/' + encodeURIComponent(id));
+  const { meeting, segments, actions, meddpicc } = await api('/meetings/' + encodeURIComponent(id));
   const pane = $('#mdetail');
   pane.replaceChildren();
   pane.append(el('h3', null, meeting.title));
@@ -87,9 +87,35 @@ async function showMeeting(id) {
 
   if (actions.length) {
     const ul = el('ul');
-    actions.forEach((action) => ul.append(el('li', null, action.task + ' — ' + action.assignee + ' [' + action.status + ']')));
+    actions.forEach((action) => {
+      const li = el('li');
+      li.append(el('span', null, action.task + ' — ' + action.assignee + ' [' + action.status + ']'));
+      if (action.status !== 'done' && action.status !== 'cancelled') {
+        const done = el('button', 'danger', 'Done');
+        done.addEventListener('click', async () => {
+          await api('/actions/' + encodeURIComponent(action.id), { method: 'PATCH', body: JSON.stringify({ status: 'done' }) });
+          showMeeting(id);
+        });
+        li.append(done);
+      }
+      ul.append(li);
+    });
     pane.append(el('h3', null, 'Action items'), ul);
   }
+
+  pane.append(el('h3', null, 'MEDDPICC'));
+  const grid = el('div', 'mdgrid');
+  const labels = {
+    metrics: 'Metrics', economic_buyer: 'Economic buyer', decision_criteria: 'Decision criteria',
+    decision_process: 'Decision process', paper_process: 'Paper process', identify_pain: 'Identify pain',
+    champion: 'Champion', competition: 'Competition'
+  };
+  Object.entries(labels).forEach(([key, label]) => {
+    const field = el('div', 'mdfield');
+    field.append(el('b', null, label), el('span', null, meddpicc?.[key] || 'Not evidenced'));
+    grid.append(field);
+  });
+  pane.append(grid);
 
   pane.append(el('h3', null, 'Transcript'));
   segments.forEach((segment) => {
@@ -154,6 +180,17 @@ async function loadSettings() {
   const settings = await api('/settings');
   $('#aiProvider').value = settings.aiProvider;
   $('#aiTimeoutMs').value = settings.aiTimeoutMs;
+  $('#knowledgeDir').value = settings.knowledgeDir || '';
+  $('#localEmbeddingUrl').value = settings.localEmbeddingUrl || '';
+  $('#localEmbeddingModel').value = settings.localEmbeddingModel || 'nomic-embed-text';
+  $('#embeddingDimensions').value = settings.embeddingDimensions || 768;
+  $('#obsidianVaultPath').value = settings.obsidianVaultPath || '';
+  $('#crmWebhookUrl').value = settings.crmWebhookUrl || '';
+  $('#crmWebhookUrl').value = settings.crmWebhookUrl || '';
+  $('#whisperBinaryPath').value = settings.whisperBinaryPath || '';
+  $('#whisperModelPath').value = settings.whisperModelPath || '';
+  $('#whisperLanguage').value = settings.whisperLanguage || 'en';
+  $('#whisperThreads').value = settings.whisperThreads || 4;
   $('#localTranscriptionUrl').value = settings.localTranscriptionUrl;
   $('#localTranscriptionModel').value = settings.localTranscriptionModel;
   $('#localChatUrl').value = settings.localChatUrl;
@@ -170,6 +207,17 @@ $('#saveSettings').addEventListener('click', async () => {
   const body = {
     aiProvider: $('#aiProvider').value,
     aiTimeoutMs: Number($('#aiTimeoutMs').value),
+    knowledgeDir: $('#knowledgeDir').value.trim(),
+    obsidianVaultPath: $('#obsidianVaultPath').value.trim(),
+    crmWebhookUrl: $('#crmWebhookUrl').value.trim(),
+    crmWebhookUrl: $('#crmWebhookUrl').value.trim(),
+    localEmbeddingUrl: $('#localEmbeddingUrl').value.trim(),
+    localEmbeddingModel: $('#localEmbeddingModel').value.trim(),
+    embeddingDimensions: Number($('#embeddingDimensions').value),
+    whisperBinaryPath: $('#whisperBinaryPath').value.trim(),
+    whisperModelPath: $('#whisperModelPath').value.trim(),
+    whisperLanguage: $('#whisperLanguage').value.trim(),
+    whisperThreads: Number($('#whisperThreads').value),
     localTranscriptionUrl: $('#localTranscriptionUrl').value.trim(),
     localTranscriptionModel: $('#localTranscriptionModel').value.trim(),
     localChatUrl: $('#localChatUrl').value.trim(),
@@ -179,11 +227,15 @@ $('#saveSettings').addEventListener('click', async () => {
   };
   if ($('#gKey').value.trim()) body.geminiApiKey = $('#gKey').value.trim();
   if ($('#nKey').value.trim()) body.nvidiaApiKey = $('#nKey').value.trim();
+  if ($('#crmWebhookToken').value.trim()) body.crmWebhookToken = $('#crmWebhookToken').value.trim();
+  if ($('#crmWebhookToken').value.trim()) body.crmWebhookToken = $('#crmWebhookToken').value.trim();
 
   try {
     await api('/settings', { method: 'POST', body: JSON.stringify(body) });
     $('#gKey').value = '';
     $('#nKey').value = '';
+    $('#crmWebhookToken').value = '';
+    $('#crmWebhookToken').value = '';
     $('#saveMsg').textContent = 'Saved.';
     loadSettings();
   } catch (error) {
@@ -234,3 +286,19 @@ $('#runCleanup').addEventListener('click', async () => {
 });
 
 loadHistory();
+
+$('#syncKnowledge').addEventListener('click', async () => {
+  try {
+    await api('/settings', {
+      method: 'POST',
+      body: JSON.stringify({ knowledgeDir: $('#knowledgeDir').value.trim() })
+    });
+    const result = await api('/kb/sync', { method: 'POST' });
+    $('#knowledgeMsg').textContent =
+      'Synced: ' + result.added + ' added, ' + result.updated + ' updated, ' + result.removed + ' removed.';
+    loadKb();
+    loadPrivacy();
+  } catch (error) {
+    $('#knowledgeMsg').textContent = error.message;
+  }
+});

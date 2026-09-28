@@ -33,7 +33,7 @@ function createClient({ chatUrl, transcriptionUrl, chatModel, transcriptionModel
     },
     async summarize(segments) {
       const raw = await this.chat(
-        'Return only valid JSON for meeting summaries. Schema: {"summary": string, "action_items": [{"task": string, "assignee": string}]}',
+        'Return only valid JSON. Schema: {"summary": string, "action_items": [{"task": string, "assignee": string}], "meddpicc": {"metrics": string, "economic_buyer": string, "decision_criteria": string, "decision_process": string, "paper_process": string, "identify_pain": string, "champion": string, "competition": string}}. Leave unsupported fields empty and never invent facts.',
         segments.map((s) => s.speaker + ': ' + s.text).join('\n')
       );
       return parseJsonObject(raw);

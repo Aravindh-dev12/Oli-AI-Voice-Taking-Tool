@@ -11,3 +11,10 @@ data/
 *.log
 .idea/
 .vscode/
+
+models/*.bin
+models/*.gguf
+models/*.ggml
+models/*.mlmodelc/
+
+.local/

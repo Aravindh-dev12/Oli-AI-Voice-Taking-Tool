@@ -1,23 +1,29 @@
 {
   "name": "oli",
   "productName": "Oli",
-  "version": "1.1.0",
+  "version": "1.3.0",
   "description": "Sovereign AI meeting copilot that lives in a notch-style overlay on Mac and Windows.",
   "main": "electron/main.js",
   "type": "module",
   "scripts": {
     "start": "electron .",
-    "check": "node --check electron/main.js && node --check electron/preload.js && node --check server/index.js && node --check server/audio.js && node --check server/logger.js && node --check server/rag.js && node --check server/ai/index.js && node --check server/ai/utils.js && node --check server/ai/gemini.js && node --check server/ai/local.js && node --check server/ai/nvidia.js && node --check renderer/audio-capture.js && node --check mcp/server.js",
+    "check": "node --check electron/main.js && node --check electron/preload.js && node --check electron/native-capture.js && node --check server/index.js && node --check server/audio.js && node --check server/config.js && node --check server/db.js && node --check server/logger.js && node --check server/rag.js && node --check server/knowledge.js && node --check server/obsidian.js && node --check server/vector.js && node --check server/ai/index.js && node --check server/ai/utils.js && node --check server/ai/gemini.js && node --check server/ai/local.js && node --check server/ai/nvidia.js && node --check server/ai/whisper.js && node --check renderer/audio-capture.js && node --check mcp/server.js && bash -n scripts/setup-local-llm.sh && bash -n scripts/run-local-chat.sh && bash -n scripts/bootstrap-sovereign.sh",
     "test": "node --test",
-    "build:native:mac": "swift build -c release --package-path native/macos",
+    "build:native:mac": "swift build -c release --package-path native/macos && npm run build:whisper:mac",
     "dist:mac": "npm run build:native:mac && electron-builder --mac",
     "dist:win": "electron-builder --win",
-    "mcp": "node mcp/server.js"
+    "mcp": "node mcp/server.js",
+    "build:whisper:mac": "cargo build --release --manifest-path native/rust/whisper-core/Cargo.toml --features metal,coreml",
+    "build:whisper": "cargo build --release --manifest-path native/rust/whisper-core/Cargo.toml",
+    "setup:local-llm": "bash scripts/setup-local-llm.sh",
+    "local:chat": "bash scripts/run-local-chat.sh",
+    "sovereign:mac": "npm run build:native:mac && npm run setup:local-llm"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.0",
     "dotenv": "^16.4.5",
-    "express": "^4.21.0"
+    "express": "^4.21.0",
+    "sqlite-vec": "0.1.9"
   },
   "devDependencies": {
     "electron": "^32.0.0",
@@ -48,6 +54,10 @@
         {
           "from": "native/macos/.build/release/OliCaptureService",
           "to": "native/OliCaptureService"
+        },
+        {
+          "from": "native/rust/whisper-core/target/release/oli-whisper",
+          "to": "native/oli-whisper"
         }
       ]
     },

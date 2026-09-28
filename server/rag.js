@@ -7,7 +7,7 @@ export function searchKnowledge(db, query, limit = 10) {
   if (!clean) return [];
   const terms = clean.split(/\s+/).filter(Boolean).slice(0, 12).map(quoteTerm).join(' OR ');
   return db.prepare(
-    'SELECT rowid AS id, title, content, rank FROM kb WHERE kb MATCH ? ORDER BY rank LIMIT ?'
+    'SELECT kb.rowid AS id, kb.title, kb.content, kb_sources.file_path AS source_path, rank FROM kb LEFT JOIN kb_sources ON kb_sources.kb_id = kb.rowid WHERE kb MATCH ? ORDER BY rank LIMIT ?'
   ).all(terms, Math.min(Math.max(Number(limit) || 10, 1), 50));
 }
 
@@ -24,5 +24,6 @@ export function getMeetingContext(db, meetingId) {
   if (!meeting) return null;
   const segments = db.prepare('SELECT speaker, text, ts FROM segments WHERE meeting_id=? ORDER BY ts').all(meetingId);
   const actions = db.prepare('SELECT task, assignee, status FROM actions WHERE meeting_id=? ORDER BY id').all(meetingId);
-  return { meeting, segments, actions };
+  const meddpicc = db.prepare('SELECT metrics, economic_buyer, decision_criteria, decision_process, paper_process, identify_pain, champion, competition, updated_at FROM meeting_intelligence WHERE meeting_id=?').get(meetingId) || null;
+  return { meeting, segments, actions, meddpicc };
 }

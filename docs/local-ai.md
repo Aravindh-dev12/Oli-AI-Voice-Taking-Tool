@@ -1,30 +1,71 @@
 # Local AI adapter contract
 
-Oli keeps the sovereign inference boundary local. The application accepts a localhost transcription endpoint and a localhost chat endpoint; it does not bundle multi-gigabyte model weights in the repository.
+Oli keeps the sovereign inference boundary local.
 
-## Transcription endpoint
+## Native Whisper / whisper.cpp
 
-Configure `OLI_LOCAL_TRANSCRIPTION_URL` to a localhost HTTP endpoint that accepts multipart form data with:
+The preferred local transcription path is the Rust `oli-whisper` process in `native/rust/whisper-core`. It keeps the Whisper model loaded in memory and accepts JSONL requests containing base64-encoded 16 kHz mono 16-bit WAV audio.
 
-- `file`: WAV audio, 16 kHz, mono, 16-bit PCM
-- `model`: the configured transcription model name
+Build on Apple Silicon:
 
-The response should be JSON containing one of `text`, `output`, or `transcript`.
+    npm run build:whisper:mac
 
-## Chat endpoint
+The command uses the current `whisper-rs` 0.16.0 bindings with Metal and Core ML feature flags. The bindings expose `WhisperContext`, `WhisperState::full`, and the Metal/Core ML build features. 
 
-Configure `OLI_LOCAL_CHAT_URL` to an OpenAI-compatible `/chat/completions` endpoint. Oli sends `model`, `temperature`, and `messages`. The response should contain `choices[0].message.content`, or a compatible `output`/`response` field.
-
-## Recommended deployment boundary
-
-Run both local services on `127.0.0.1`. The adapter rejects non-local URLs. Model runtime selection, quantization, Metal/MLX acceleration, and model downloads are intentionally outside the Electron UI so they can evolve independently.
-
-## Example environment
+Set:
 
     OLI_AI_PROVIDER=local
-    OLI_LOCAL_TRANSCRIPTION_URL=http://127.0.0.1:8000/v1/audio/transcriptions
-    OLI_LOCAL_TRANSCRIPTION_MODEL=whisper-large-v3-turbo
+    OLI_WHISPER_MODEL_PATH=/absolute/path/to/ggml-large-v3-turbo-q5_0.bin
+
+The current whisper.cpp model registry publishes `ggml-large-v3-turbo-q5_0.bin` at about 547 MiB. 
+
+    mkdir -p models
+    curl -L -o models/ggml-large-v3-turbo-q5_0.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin
+
+When Core ML support is compiled, whisper.cpp derives the companion encoder directory as:
+
+    /absolute/path/to/ggml-large-v3-turbo-encoder.mlmodelc
+
+The GGML model remains required because the decoder still comes from the GGML model; the Core ML artifact accelerates the encoder. 
+
+Quantized models are supported by whisper.cpp; its current documentation shows GGML `q5_0` quantization as an example. citeturn209481search5
+
+## Local chat
+
+Set `OLI_LOCAL_CHAT_URL` to a localhost OpenAI-compatible `/chat/completions` endpoint. The server sends `model`, `temperature`, and `messages`.
+
+Example:
+
     OLI_LOCAL_CHAT_URL=http://127.0.0.1:1234/v1/chat/completions
     OLI_LOCAL_CHAT_MODEL=llama-3.2-3b
 
-Before capturing real meetings, verify the local services independently with a short test WAV and a test chat request. Then start Oli and confirm Dashboard → AI settings shows both local capabilities as configured.
+## Local HTTP transcription fallback
+
+When native Whisper is unavailable, Oli can use:
+
+    OLI_LOCAL_TRANSCRIPTION_URL=http://127.0.0.1:8000/v1/audio/transcriptions
+
+That endpoint accepts multipart form data with a WAV file and model name and returns JSON with `text`, `output`, or `transcript`.
+
+## Provider selection
+
+- `auto`: complete native-Whisper + local-chat is preferred; local HTTP is next; Gemini is the development fallback.
+- `local`: requires a complete local stack.
+- `gemini`: explicit development cloud provider.
+- `nvidia`: explicit NVIDIA copilot provider.
+
+The native Whisper process itself makes no network calls. The cloud adapters are separate and only used when configured/selected.
+
+## Semantic RAG with sqlite-vec
+
+Oli can load sqlite-vec into the same local SQLite database and maintain a `vec0` table for KB embeddings. The vector path is enabled when `OLI_LOCAL_EMBEDDING_URL` is configured; FTS5 remains the fallback when embeddings are unavailable.
+
+Current stable sqlite-vec is 0.1.9. It supports Node installation and `vec0` KNN tables. 
+
+Configure:
+
+    OLI_LOCAL_EMBEDDING_URL=http://127.0.0.1:1234/v1/embeddings
+    OLI_LOCAL_EMBEDDING_MODEL=nomic-embed-text
+    OLI_EMBEDDING_DIMENSIONS=768
+
+The embedding endpoint is local-only. Oli sends document/query text to that localhost endpoint and stores only the resulting vectors in SQLite.

@@ -42,6 +42,11 @@ const tools = [
     }
   },
   {
+    name: 'oli_get_meddpicc',
+    description: 'Get persisted MEDDPICC fields for one meeting. Fields are evidence extracted from the local meeting transcript; empty fields mean no evidence was stored.',
+    inputSchema: { type: 'object', required: ['meetingId'], properties: { meetingId: { type: 'string' } } }
+  },
+  {
     name: 'oli_list_commitments',
     description: 'List action items/commitments, optionally scoped to a meeting.',
     inputSchema: {
@@ -81,6 +86,12 @@ function handleTool(name, input = {}) {
 
     case 'oli_search_transcript':
       return searchTranscript(db, input.query, input.limit);
+
+    case 'oli_get_meddpicc': {
+      const context = getMeetingContext(db, String(input.meetingId || ''));
+      if (!context) throw new Error('Meeting not found.');
+      return context.meddpicc || { meetingId: input.meetingId, empty: true };
+    }
 
     case 'oli_list_commitments': {
       const limit = Math.min(Math.max(Number(input.limit) || 50, 1), 100);
