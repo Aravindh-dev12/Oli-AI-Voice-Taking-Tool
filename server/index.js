@@ -4,196 +4,303 @@ import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { openDb } from './db.js';
 import { loadConfig, saveConfig, redact } from './config.js';
+import { parseCaptureSequence, parseCaptureSource, validateWavPayload } from './audio.js';
+import { createAiRuntime } from './ai/index.js';
+import { createLogger } from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const TRIGGERS = /competitor|alternative|compare|switch|too expensive|budget|pric(e|ing)|cost|security|complian|soc ?2|hipaa|gdpr|on-?prem|integrat|sla\b/i;
 const COMMIT = /\b(i'?ll|i will|we'?ll|we will|let me)\b.{0,40}\b(send|share|email|follow up|get back|schedule|set up|prepare)\b/i;
 
+function applyRetentionPolicy(db, retentionDays) {
+  if (!retentionDays) return 0;
+  const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+  return db.prepare('DELETE FROM meetings WHERE ended_at IS NOT NULL AND ended_at < ?').run(cutoff).changes;
+}
+
+function safeActionItems(value) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item && typeof item === 'object')
+    .map((item) => ({
+      task: String(item.task || '').trim().slice(0, 500),
+      assignee: String(item.assignee || 'Unassigned').trim().slice(0, 120)
+    }))
+    .filter((item) => item.task);
+}
+
 export function createServer({ dbPath, configPath }) {
   const db = openDb(dbPath);
   const q = (sql) => db.prepare(sql);
   let cfg = loadConfig(configPath);
-
-  async function gemini(parts, json = false) {
-    if (!cfg.geminiApiKey) throw new Error('Add a Gemini API key in Settings first.');
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${cfg.geminiModel}:generateContent`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.geminiApiKey },
-        body: JSON.stringify({
-          contents: [{ parts }],
-          generationConfig: { temperature: 0.1, ...(json && { responseMimeType: 'application/json' }) }
-        })
-      }
-    );
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error?.message || 'Gemini request failed');
-    return (d.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();
-  }
-
-  async function copilot(system, user) {
-    if (!cfg.nvidiaApiKey) return gemini([{ text: `${system}\n\n${user}` }]);
-    const r = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.nvidiaApiKey}` },
-      body: JSON.stringify({
-        model: cfg.nvidiaModel,
-        temperature: 0.1,
-        max_tokens: 60,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user }
-        ]
-      })
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || d.error?.message || 'NVIDIA request failed');
-    return d.choices[0].message.content.trim();
-  }
-
-  // ---- Live event fan-out (SSE) ----
+  let ai = createAiRuntime(cfg);
+  const logger = createLogger('server');
+  applyRetentionPolicy(db, cfg.retentionDays);
   const clients = new Map();
+
   const emit = (id, event, data) => {
-    clients.get(id)?.forEach((res) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+    clients.get(id)?.forEach((res) => {
+      try { res.write('event: ' + event + '\ndata: ' + JSON.stringify(data) + '\n\n'); } catch {}
+    });
   };
+
+  const meetingExists = (id) => Boolean(q('SELECT 1 FROM meetings WHERE id=?').get(id));
 
   async function fireWhisper(id, text) {
     const terms = [...new Set(text.toLowerCase().match(/[a-z0-9]{4,}/g) || [])]
       .slice(0, 8)
-      .map((w) => `"${w}"`)
+      .map((word) => '"' + word.replace(/"/g, '') + '"')
       .join(' OR ');
-    const hit = terms ? q('SELECT title, content FROM kb WHERE kb MATCH ? ORDER BY rank LIMIT 1').get(terms) : null;
+    const hit = terms
+      ? q('SELECT rowid AS id, title, content FROM kb WHERE kb MATCH ? ORDER BY rank LIMIT 1').get(terms)
+      : null;
+
     try {
-      const tip = await copilot(
-        'You are a real-time negotiation copilot. Reply with ONE bullet under 25 words: a killer fact or a sharp pivot question. Use ONLY the verified context if given; otherwise ask a discovery question. No filler, no preamble.',
-        `Verified context:\n${hit ? hit.content.slice(0, 600) : 'none'}\n\nProspect said: "${text}"`
+      const tip = await ai.copilot(
+        'You are a real-time meeting copilot. Reply with one concise bullet under 25 words. Use only verified context when supplied. Otherwise ask one useful discovery question. No filler or preamble.',
+        'Verified context:\n' + (hit ? hit.content.slice(0, 800) : 'none') +
+        '\n\nParticipant said: "' + text.slice(0, 2000) + '"'
       );
-      emit(id, 'whisper', { tip, source: hit?.title || null, trigger: text });
-    } catch (e) {
-      emit(id, 'error', { message: 'Whisper failed: ' + e.message });
+      if (tip) emit(id, 'whisper', { tip, source: hit?.title || null, sourceId: hit?.id || null, trigger: text });
+    } catch (error) {
+      emit(id, 'error', { message: 'Whisper unavailable: ' + error.message });
     }
   }
 
   const app = express();
+  app.disable('x-powered-by');
   app.use(express.json({ limit: '1mb' }));
-  app.use('/', express.static(path.join(__dirname, '..', 'renderer')));
+  app.use(express.static(path.join(__dirname, '..', 'renderer')));
 
-  app.get('/api/health', (_, res) => res.json({ ok: true, gemini: !!cfg.geminiApiKey, nvidia: !!cfg.nvidiaApiKey }));
+  app.get('/api/health', (_, res) => {
+    const status = ai.status();
+    res.json({ ok: true, aiReady: status.ready, ai: status });
+  });
 
   app.get('/api/settings', (_, res) => res.json(redact(cfg)));
+
+  app.get('/api/privacy', (_, res) => {
+    const meetingCount = db.prepare('SELECT COUNT(*) AS count FROM meetings').get().count;
+    const transcriptCount = db.prepare('SELECT COUNT(*) AS count FROM segments').get().count;
+    const kbCount = db.prepare('SELECT COUNT(*) AS count FROM kb').get().count;
+    res.json({ retentionDays: cfg.retentionDays, localOnly: cfg.aiProvider === 'local', meetingCount, transcriptCount, kbCount });
+  });
+
+  app.post('/api/privacy', (req, res) => {
+    cfg = saveConfig(configPath, { ...cfg, retentionDays: req.body.retentionDays });
+    ai = createAiRuntime(cfg);
+    const deleted = applyRetentionPolicy(db, cfg.retentionDays);
+    res.json({ retentionDays: cfg.retentionDays, deleted });
+  });
+
+  app.post('/api/privacy/cleanup', (_, res) => {
+    const deleted = applyRetentionPolicy(db, cfg.retentionDays);
+    res.json({ ok: true, deleted, retentionDays: cfg.retentionDays });
+  });
+
   app.post('/api/settings', (req, res) => {
     cfg = saveConfig(configPath, { ...cfg, ...req.body });
+    ai = createAiRuntime(cfg);
     res.json(redact(cfg));
   });
 
-  app.get('/api/meetings', (_, res) =>
-    res.json(q('SELECT id, title, started_at, ended_at FROM meetings ORDER BY started_at DESC LIMIT 200').all())
-  );
+  app.get('/api/meetings', (_, res) => {
+    res.json(q(
+      'SELECT id, title, started_at, ended_at, summary FROM meetings ORDER BY started_at DESC LIMIT 200'
+    ).all());
+  });
+
   app.post('/api/meetings', (req, res) => {
+    if (!ai.status().ready) {
+      return res.status(503).json({ error: 'No complete AI runtime is configured. Configure local or development AI in Settings.' });
+    }
     const id = randomUUID();
     q('INSERT INTO meetings(id, title, started_at) VALUES(?,?,?)').run(
       id,
-      String(req.body.title || 'Untitled meeting').slice(0, 200),
+      String(req.body.title || 'Untitled meeting').trim().slice(0, 200),
       Date.now()
     );
-    res.json({ id });
+    logger.info('meeting created', { meetingId: id });
+    res.status(201).json({ id });
   });
+
   app.get('/api/meetings/:id', (req, res) => {
     const meeting = q('SELECT * FROM meetings WHERE id=?').get(req.params.id);
     if (!meeting) return res.sendStatus(404);
     res.json({
       meeting,
       segments: q('SELECT speaker, text, ts FROM segments WHERE meeting_id=? ORDER BY ts').all(req.params.id),
-      actions: q('SELECT task, assignee, status FROM actions WHERE meeting_id=?').all(req.params.id)
+      actions: q('SELECT task, assignee, status FROM actions WHERE meeting_id=? ORDER BY id').all(req.params.id)
     });
   });
+
+  app.get('/api/meetings/:id/export', (req, res) => {
+    const context = q('SELECT * FROM meetings WHERE id=?').get(req.params.id);
+    if (!context) return res.sendStatus(404);
+    const segments = q('SELECT speaker, text, ts FROM segments WHERE meeting_id=? ORDER BY ts').all(req.params.id);
+    const actions = q('SELECT task, assignee, status FROM actions WHERE meeting_id=? ORDER BY id').all(req.params.id);
+    const document = {
+      meeting: context,
+      segments,
+      actions,
+      exported_at: Date.now(),
+      privacy: { local_only: cfg.aiProvider === 'local' }
+    };
+    res.setHeader('Content-Disposition', 'attachment; filename="oli-meeting-' + req.params.id + '.json"');
+    res.json(document);
+  });
+
   app.delete('/api/meetings/:id', (req, res) => {
-    q('DELETE FROM meetings WHERE id=?').run(req.params.id);
+    const result = q('DELETE FROM meetings WHERE id=?').run(req.params.id);
+    if (!result.changes) return res.sendStatus(404);
+    clients.get(req.params.id)?.forEach((client) => {
+      try { client.end(); } catch {}
+    });
+    clients.delete(req.params.id);
     res.json({ ok: true });
   });
 
   app.get('/api/meetings/:id/stream', (req, res) => {
     const { id } = req.params;
-    res.set({ 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    if (!meetingExists(id)) return res.sendStatus(404);
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no'
+    });
     res.flushHeaders();
     if (!clients.has(id)) clients.set(id, new Set());
     clients.get(id).add(res);
-    const ping = setInterval(() => res.write(': ping\n\n'), 25000);
+    res.write('retry: 2000\n\n');
+    const ping = setInterval(() => {
+      try { res.write(': ping\n\n'); } catch {}
+    }, 25000);
     req.on('close', () => {
       clearInterval(ping);
       clients.get(id)?.delete(res);
+      if (!clients.get(id)?.size) clients.delete(id);
     });
   });
 
-  app.post('/api/meetings/:id/chunk', express.raw({ type: '*/*', limit: '12mb' }), async (req, res) => {
+  app.post('/api/meetings/:id/chunk', express.raw({ type: 'audio/wav', limit: '12mb' }), async (req, res) => {
     const { id } = req.params;
-    const speaker = req.query.src === 'me' ? 'You' : 'Them';
-    if (!q('SELECT 1 FROM meetings WHERE id=?').get(id)) return res.sendStatus(404);
+    if (!meetingExists(id)) return res.sendStatus(404);
+
+    let source;
+    let sequence;
     try {
-      const text = await gemini([
-        { text: 'Transcribe this audio verbatim. Output only the spoken words, nothing else. If there is no clear speech, output nothing.' },
-        { inline_data: { mime_type: 'audio/wav', data: req.body.toString('base64') } }
-      ]);
-      if (text.length < 2) return res.json({ ok: true });
-      const seg = { speaker, text, ts: Date.now() };
-      q('INSERT INTO segments(meeting_id, speaker, text, ts) VALUES(?,?,?,?)').run(id, speaker, text, seg.ts);
-      emit(id, 'segment', seg);
-      res.json({ ok: true });
-      if (speaker === 'Them' && TRIGGERS.test(text)) fireWhisper(id, text);
+      source = parseCaptureSource(req.query.src);
+      sequence = parseCaptureSequence(req.query.seq);
+      validateWavPayload(req.body);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    const speaker = source === 'me' ? 'You' : 'Them';
+    const claim = q(
+      'INSERT OR IGNORE INTO capture_chunks(meeting_id, speaker, sequence, created_at) VALUES(?,?,?,?)'
+    ).run(id, speaker, sequence, Date.now());
+
+    if (!claim.changes) return res.json({ ok: true, deduplicated: true });
+
+    try {
+      const text = await ai.transcribe(req.body);
+      if (!text || text.length < 2) return res.json({ ok: true, speech: false });
+
+      const segment = {
+        speaker,
+        text: text.slice(0, 12000),
+        ts: Date.now()
+      };
+      q('INSERT INTO segments(meeting_id, speaker, text, ts) VALUES(?,?,?,?)').run(
+        id,
+        segment.speaker,
+        segment.text,
+        segment.ts
+      );
+      emit(id, 'segment', segment);
+      res.json({ ok: true, speech: true });
+
+      if (speaker === 'Them' && TRIGGERS.test(text)) void fireWhisper(id, text);
       if (speaker === 'You' && COMMIT.test(text)) {
-        q('INSERT INTO actions(meeting_id, task, assignee) VALUES(?,?,?)').run(id, text, 'You');
-        emit(id, 'action', { task: text, assignee: 'You' });
+        const task = text.slice(0, 500);
+        q('INSERT INTO actions(meeting_id, task, assignee) VALUES(?,?,?)').run(id, task, 'You');
+        emit(id, 'action', { task, assignee: 'You' });
       }
-    } catch (e) {
-      emit(id, 'error', { message: e.message });
-      res.status(502).json({ error: e.message });
+    } catch (error) {
+      logger.error('transcription failed', { meetingId: id, reason: error.message });
+      emit(id, 'error', { message: 'Transcription failed: ' + error.message });
+      res.status(502).json({ error: 'Transcription failed. The meeting remains saved locally.' });
     }
   });
 
   app.post('/api/meetings/:id/end', async (req, res) => {
     const { id } = req.params;
-    const segs = q('SELECT speaker, text FROM segments WHERE meeting_id=? ORDER BY ts').all(id);
+    const meeting = q('SELECT id, ended_at FROM meetings WHERE id=?').get(id);
+    if (!meeting) return res.sendStatus(404);
+    if (meeting.ended_at) {
+      const existing = q('SELECT summary FROM meetings WHERE id=?').get(id);
+      return res.json({ summary: existing?.summary || 'Meeting already ended.', items: [] });
+    }
+
+    const segments = q('SELECT speaker, text FROM segments WHERE meeting_id=? ORDER BY ts').all(id);
     let summary = 'No speech was captured.';
     let items = [];
-    try {
-      if (segs.length) {
-        const j = JSON.parse(
-          await gemini(
-            [
-              {
-                text:
-                  'Summarize this meeting. Return JSON only: {"summary": string (max 120 words), "action_items": [{"task": string, "assignee": string}]}.\n\n' +
-                  segs.map((s) => `${s.speaker}: ${s.text}`).join('\n')
-              }
-            ],
-            true
-          )
-        );
-        summary = j.summary || summary;
-        items = j.action_items || [];
+    if (segments.length) {
+      try {
+        const result = await ai.summarize(segments);
+        summary = String(result.summary || summary).trim().slice(0, 4000);
+        items = safeActionItems(result.action_items);
+      } catch (error) {
+        summary = 'Summary unavailable: ' + error.message;
       }
-    } catch (e) {
-      summary = 'Summary failed: ' + e.message;
     }
-    const ins = q('INSERT INTO actions(meeting_id, task, assignee) VALUES(?,?,?)');
-    items.forEach((a) => ins.run(id, a.task, a.assignee || 'Unassigned'));
-    q('UPDATE meetings SET ended_at=?, summary=? WHERE id=?').run(Date.now(), summary, id);
+
+    const insertAction = q('INSERT INTO actions(meeting_id, task, assignee) VALUES(?,?,?)');
+    const tx = db.transaction(() => {
+      for (const item of items) insertAction.run(id, item.task, item.assignee);
+      q('UPDATE meetings SET ended_at=?, summary=? WHERE id=?').run(Date.now(), summary, id);
+    });
+    tx();
+    logger.info('meeting ended', { meetingId: id, segments: segments.length, actions: items.length });
+    emit(id, 'meeting-ended', { summary });
     res.json({ summary, items });
   });
 
-  app.get('/api/kb', (_, res) => res.json(q('SELECT rowid AS id, title, content FROM kb').all()));
-  app.post('/api/kb', (req, res) => {
-    const { title, content } = req.body;
-    if (!title || !content) return res.status(400).json({ error: 'title and content are required' });
-    q('INSERT INTO kb(title, content) VALUES(?,?)').run(title, content);
-    res.json({ ok: true });
+  app.get('/api/kb', (_, res) => res.json(
+    q('SELECT rowid AS id, title, content FROM kb ORDER BY rowid DESC').all()
+  ));
+
+  app.get('/api/kb/search', (req, res) => {
+    const query = String(req.query.q || '').trim();
+    if (!query) return res.json([]);
+    const terms = query.split(/\s+/).filter(Boolean).slice(0, 12).map((word) => '"' + word.replace(/"/g, '') + '"').join(' OR ');
+    res.json(q('SELECT rowid AS id, title, content, rank FROM kb WHERE kb MATCH ? ORDER BY rank LIMIT 10').all(terms));
   });
+
+  app.post('/api/kb', (req, res) => {
+    const title = String(req.body.title || '').trim();
+    const content = String(req.body.content || '').trim();
+    if (!title || !content) return res.status(400).json({ error: 'title and content are required' });
+    q('INSERT INTO kb(title, content) VALUES(?,?)').run(title.slice(0, 200), content.slice(0, 20000));
+    res.status(201).json({ ok: true });
+  });
+
   app.delete('/api/kb/:id', (req, res) => {
-    q('DELETE FROM kb WHERE rowid=?').run(req.params.id);
+    const result = q('DELETE FROM kb WHERE rowid=?').run(req.params.id);
+    if (!result.changes) return res.sendStatus(404);
     res.json({ ok: true });
   });
 
-  return { app, db };
+  return {
+    app,
+    db,
+    close() {
+      clients.forEach((connections) => connections.forEach((res) => { try { res.end(); } catch {} }));
+      clients.clear();
+      db.close();
+    }
+  };
 }

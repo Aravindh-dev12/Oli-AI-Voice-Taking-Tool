@@ -1,125 +1,132 @@
-# Oli — sovereign notch-style meeting copilot
+# Oli — sovereign notch meeting copilot
 
-A desktop overlay that docks at the top of your screen, listens to both sides of a
-call, and whispers real-time talking points — built with Electron so the same
-app runs on both Mac and Windows.
+Oli is a tray-resident desktop meeting copilot designed around a black notch-style HUD: ambient when quiet, a short whisper flare for important live cues, and a command shelf for transcript and meeting intelligence.
 
-## Read this first — what "notch" means on each OS
+## What is implemented
 
-- **macOS with a physical notch:** Oli docks a small black bar at the very top
-  center of the screen, right under the camera. It is not pixel-fused into the
-  actual hardware cutout — that level of fit needs Apple's private
-  `NSScreen.auxiliaryTopLeftArea` API, which only Swift/AppKit can call, not a
-  Chromium-based app. What's here gets visually close and sits in the same spot.
-- **macOS without a notch, and all Windows laptops:** Windows laptops don't have
-  a notch to dock into, so Oli shows the same floating black island at the top
-  center of the screen. This is intentional, not a fallback bug — it's the same
-  approach your own research doc describes for non-notch displays.
-- If you want the literal, pixel-perfect notch fit on Mac specifically, that
-  means writing native Swift/AppKit (`NSPanel` + `NSScreen.auxiliaryTopLeftArea`)
-  talking to this same backend over HTTP/SSE. That's a separate, Mac-only
-  project this build doesn't include.
+- **Ambient notch HUD:** black pill, whisper flare, and command shelf states.
+- **Protected overlay:** Electron content protection is enabled for the overlay so supported OS capture paths can exclude it.
+- **Dual-channel capture:** microphone is `You`; shared tab/system audio is `Them`.
+- **Bounded audio pipeline:** 16 kHz mono PCM WAV, silence filtering, sequence IDs, upload backpressure, and cleanup.
+- **Local-first AI runtime:** Auto mode prefers a complete localhost transcription + chat stack. Gemini and NVIDIA remain optional development providers.
+- **Local SQLite:** meetings, transcript segments, action items, and FTS knowledge base.
+- **Local MCP hub:** stdio tools expose meetings, transcripts, commitments, and knowledge search to local agents.
+- **macOS notch geometry helper:** AppKit reads display safe areas and physical notch width; non-notched displays use a centered simulated island.
+- **Privacy controls:** retention policy, cleanup, explicit meeting export, deletion, and provider-mode visibility.
+- **Reliability tooling:** Node tests, syntax checks, structured redacted logs, CI, and platform release workflows.
 
-## What's real in this build
+## Architecture
 
-- **Three states**, matching your spec: a resting pill, a whisper flare that
-  auto-dismisses after 5 seconds, and a command shelf (live transcript +
-  in-flight intelligence + action items) on hover or `Alt+Space`.
-- **Dual-track capture, hardware-separated:** your microphone is "You", the
-  shared tab/system audio is "Them" — no diarization model needed.
-- **Gemini** transcribes each ~6-second audio chunk and writes the end-of-call
-  summary and action items.
-- **NVIDIA's hosted API** (free credits at build.nvidia.com) generates the
-  real-time whisper text, grounded only in what you save in the knowledge base.
-  If you don't set an NVIDIA key, whispers fall back to Gemini automatically.
-- **SQLite** (with FTS5) stores meetings, transcripts, action items, and the
-  knowledge base — one local file, no cloud database.
-- **Screen-share invisibility is real**: `win.setContentProtection(true)` maps
-  to `NSWindow.sharingType = .none` on macOS and `SetWindowDisplayAffinity`
-  on Windows. Both hide the overlay from screen shares and recordings.
-- Strict black-and-white UI throughout, both the notch and the dashboard.
+    Electron shell
+        |
+        +--> protected notch renderer
+        |       +--> microphone capture
+        |       +--> system/tab audio capture
+        |       +--> SSE live shelf
+        |
+        +--> localhost Express API
+                |
+                +--> SQLite + FTS5
+                +--> local-first AI runtime
+                |      +--> localhost transcription
+                |      +--> localhost chat
+                |      +--> optional Gemini / NVIDIA
+                |
+                +--> local MCP stdio hub
 
-## What's NOT included
+See `docs/architecture.md`.
 
-- The native Swift notch-fit described above.
-- NVIDIA's speech models (Parakeet/Canary) aren't wired in — Gemini handles
-  transcription. See "Swapping in NVIDIA speech" below for how to add it.
-- Code signing / notarization for the installers (see Packaging).
-- Auth, multi-user accounts, and cloud sync — this is a single-user local app.
-- Automatic local Mac notch-width detection — Oli uses a fixed, reasonable
-  pill size rather than measuring your exact model's cutout.
+## Requirements
 
-## Setup
+- Node.js 22+
+- macOS for the native notch helper and `.dmg` build
+- Windows for the `.exe` build
+- For sovereign mode: a localhost transcription endpoint and localhost chat endpoint compatible with the documented adapter shape
+- For development cloud mode: a Gemini API key; NVIDIA is optional for whispers
+
+## Install
 
 ```bash
-cp .env.example .env
-# then get keys and paste them in — either into .env, or later into
-# the Dashboard's Settings tab once the app is running (Settings writes
-# to data/config.json and takes effect immediately, no restart needed)
+git clone https://github.com/Aravindh-dev12/Oli-AI-Voice-Taking-Tool.git
+cd Oli-AI-Voice-Taking-Tool
 npm install
+cp .env.example .env
+```
+
+Never commit `.env`, `data/`, credentials, transcripts, recordings, or installers.
+
+## Run
+
+```bash
 npm start
 ```
 
-- Gemini key (required): https://aistudio.google.com/apikey — free tier.
-- NVIDIA key (optional, recommended for speed): https://build.nvidia.com —
-  browse "Models", pick a chat model such as `meta/llama-3.1-8b-instruct`,
-  and generate an API key from there. Free credits, rate-limited.
+The local API listens on `127.0.0.1`:4173 by default. Oli stays resident in the system tray/menu bar.
 
-### First run permissions
+On macOS, grant Microphone and Screen Recording permissions when prompted. Starting a meeting uses the normal OS capture picker; choose the relevant tab/system-audio source.
 
-- **macOS:** System Settings → Privacy & Security → grant Oli both
-  **Microphone** and **Screen Recording**. Screen Recording is what lets the
-  browser's "share tab/system audio" picker work at all.
-- **Windows:** Windows will prompt for microphone access on first use. The
-  "share system audio" checkbox appears in Chromium's own share-screen dialog
-  when you click Start — tick it, or audio from the other participants won't
-  be captured.
-- Starting a meeting always triggers the OS's normal screen/tab-share picker
-  — Oli cannot capture system audio silently, and it shouldn't be able to.
+## AI configuration
 
-### Using it
+Dashboard → **AI settings** supports:
 
-- Click the pill to start a meeting; hover it (or `Alt+Space`) to open the
-  command shelf and see the live transcript.
-- The tray icon (bottom-right on Windows, menu bar on Mac) has "Open
-  dashboard" — that's where meeting history, the knowledge base, and API
-  settings live.
-- Whispers only fire once a knowledge-base entry exists to ground them in —
-  add battlecards and pricing sheets in Dashboard → Knowledge base first.
+- `Auto`: use a complete local stack when available, otherwise Gemini.
+- `Local`: require localhost transcription and chat endpoints.
+- `Gemini`: explicit development cloud provider.
+- `NVIDIA`: explicit copilot provider; transcription still requires a configured transcription provider.
 
-## Packaging installers
+The local adapter accepts an OpenAI-compatible chat endpoint and a multipart transcription endpoint. Exact environment variables are documented in `.env.example` and `docs/development.md`.
 
-This project can't be built into a `.dmg` or `.exe` from this sandbox — that
-needs a real macOS machine (for the Mac build, unsigned is fine for personal
-use) or a real Windows machine, since `electron-builder` cross-compiles
-natively per OS. On your own machine:
+## MCP
+
+Run:
 
 ```bash
-npm run dist:mac    # produces a .dmg  (run this on a Mac)
-npm run dist:win    # produces an installer .exe (run this on Windows)
+npm run mcp -- --db "/absolute/path/to/oli.db"
 ```
 
-Unsigned builds will trigger Gatekeeper/SmartScreen warnings on first launch;
-that's expected without a paid Apple Developer / code-signing certificate.
+See `mcp/README.md` for Claude/Cursor-style configuration.
 
-## Swapping in NVIDIA speech models
+## Development checks
 
-NVIDIA hosts Riva ASR models (e.g. `parakeet-tdt-1.1b`) for free at
-build.nvidia.com/explore/speech. To use one instead of Gemini for
-transcription, replace the `gemini(...)` call inside the
-`/api/meetings/:id/chunk` handler in `server/index.js` with a call to
-NVIDIA's ASR gRPC/REST endpoint for that model, keeping the WAV chunk format
-already produced by `notch.js`. Left out of this build because NVIDIA's
-speech endpoints need their own SDK setup separate from the chat-completions
-endpoint used for whispers.
-
-## Project layout
-
+```bash
+npm run check
+npm test
 ```
-oli/
-  server/     Express API: meetings, live SSE stream, transcription, KB, settings
-  electron/   main.js (window + tray + server bootstrap), preload.js (IPC bridge)
-  renderer/   notch.html/css/js (overlay UI), dashboard.html/css/js (history/KB/settings)
-  assets/     tray + app icons
-  data/       SQLite DB + config.json (created on first run)
+
+## Build installers
+
+macOS:
+
+```bash
+npm run dist:mac
 ```
+
+Windows:
+
+```bash
+npm run dist:win
+```
+
+The macOS build compiles the AppKit notch geometry helper first.
+
+Unsigned artifacts are development artifacts. See `docs/release.md` for signing, notarization, and production release steps.
+
+## Repository workflow
+
+The implementation is split into issue-backed feature branches and PRs. Every PR should use the repository template, run CI, and receive review before merge.
+
+Issues:
+- #1 root layout
+- #2 notch shell
+- #3 audio pipeline
+- #4 local AI
+- #5 MCP/RAG
+- #6 privacy/dashboard
+- #7 tests/observability
+- #8 CI/release
+
+## Important production boundary
+
+The repository now contains a production-grade application foundation and the interfaces required for sovereign/local inference, but it does **not** vendor large Whisper/LLM model weights or a complete Apple Neural Engine runtime. Those remain deployable local services behind the localhost adapter, keeping the app itself independent of a cloud audio pipeline.
+
+See `docs/privacy.md`, `docs/architecture.md`, and `docs/release.md` before distributing the application.

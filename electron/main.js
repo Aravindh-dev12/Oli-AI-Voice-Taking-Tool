@@ -5,14 +5,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from '../server/index.js';
+import { createLogger } from '../server/logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4173);
 const DB_PATH = path.resolve(app.getPath('userData'), process.env.DB_PATH || 'data/oli.db');
 const CONFIG_PATH = path.resolve(app.getPath('userData'), process.env.CONFIG_PATH || 'data/config.json');
 
-let notchWin, dashboardWin, tray;
+let notchWin, dashboardWin, tray, serverInstance, httpServer;
 let meetingActive = false;
+const logger = createLogger('desktop');
 let notchGeometry = null;
 
 const BASE_SIZE = {
@@ -143,11 +145,12 @@ function refreshTrayMenu() {
 
 async function boot() {
   if (process.platform === 'darwin' && app.dock) app.dock.hide();
-  const { app: expressApp } = createServer({ dbPath: DB_PATH, configPath: CONFIG_PATH });
+  serverInstance = createServer({ dbPath: DB_PATH, configPath: CONFIG_PATH });
   await new Promise((resolve, reject) => {
-    const server = expressApp.listen(PORT, '127.0.0.1', resolve);
-    server.on('error', reject);
+    httpServer = serverInstance.app.listen(PORT, '127.0.0.1', resolve);
+    httpServer.on('error', reject);
   });
+  logger.info('local server ready', { port: PORT });
   createNotchWindow();
   buildTray();
   globalShortcut.register('Alt+Space', () => notchWin?.webContents.send('oli:toggle-pin'));
@@ -168,6 +171,12 @@ ipcMain.handle('oli:platform', () => process.platform);
 
 const reposition = () => resizeNotch('pill');
 app.on('window-all-closed', (e) => e.preventDefault());
+app.on('before-quit', () => {
+  try { httpServer?.close(); } catch {}
+  try { serverInstance?.close(); } catch {}
+  logger.info('shutdown complete');
+});
+
 app.on('will-quit', () => {
   globalShortcut.unregisterAll();
 });
