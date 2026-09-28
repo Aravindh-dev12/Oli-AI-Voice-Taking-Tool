@@ -12,6 +12,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const TRIGGERS = /competitor|alternative|compare|switch|too expensive|budget|pric(e|ing)|cost|security|complian|soc ?2|hipaa|gdpr|on-?prem|integrat|sla\b/i;
 const COMMIT = /\b(i'?ll|i will|we'?ll|we will|let me)\b.{0,40}\b(send|share|email|follow up|get back|schedule|set up|prepare)\b/i;
 
+function applyRetentionPolicy(db, retentionDays) {
+  if (!retentionDays) return 0;
+  const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+  return db.prepare('DELETE FROM meetings WHERE ended_at IS NOT NULL AND ended_at < ?').run(cutoff).changes;
+}
+
 function safeActionItems(value) {
   if (!Array.isArray(value)) return [];
   return value
@@ -28,6 +34,7 @@ export function createServer({ dbPath, configPath }) {
   const q = (sql) => db.prepare(sql);
   let cfg = loadConfig(configPath);
   let ai = createAiRuntime(cfg);
+  applyRetentionPolicy(db, cfg.retentionDays);
   const clients = new Map();
 
   const emit = (id, event, data) => {
@@ -71,6 +78,25 @@ export function createServer({ dbPath, configPath }) {
 
   app.get('/api/settings', (_, res) => res.json(redact(cfg)));
 
+  app.get('/api/privacy', (_, res) => {
+    const meetingCount = db.prepare('SELECT COUNT(*) AS count FROM meetings').get().count;
+    const transcriptCount = db.prepare('SELECT COUNT(*) AS count FROM segments').get().count;
+    const kbCount = db.prepare('SELECT COUNT(*) AS count FROM kb').get().count;
+    res.json({ retentionDays: cfg.retentionDays, localOnly: cfg.aiProvider === 'local', meetingCount, transcriptCount, kbCount });
+  });
+
+  app.post('/api/privacy', (req, res) => {
+    cfg = saveConfig(configPath, { ...cfg, retentionDays: req.body.retentionDays });
+    ai = createAiRuntime(cfg);
+    const deleted = applyRetentionPolicy(db, cfg.retentionDays);
+    res.json({ retentionDays: cfg.retentionDays, deleted });
+  });
+
+  app.post('/api/privacy/cleanup', (_, res) => {
+    const deleted = applyRetentionPolicy(db, cfg.retentionDays);
+    res.json({ ok: true, deleted, retentionDays: cfg.retentionDays });
+  });
+
   app.post('/api/settings', (req, res) => {
     cfg = saveConfig(configPath, { ...cfg, ...req.body });
     ai = createAiRuntime(cfg);
@@ -104,6 +130,22 @@ export function createServer({ dbPath, configPath }) {
       segments: q('SELECT speaker, text, ts FROM segments WHERE meeting_id=? ORDER BY ts').all(req.params.id),
       actions: q('SELECT task, assignee, status FROM actions WHERE meeting_id=? ORDER BY id').all(req.params.id)
     });
+  });
+
+  app.get('/api/meetings/:id/export', (req, res) => {
+    const context = q('SELECT * FROM meetings WHERE id=?').get(req.params.id);
+    if (!context) return res.sendStatus(404);
+    const segments = q('SELECT speaker, text, ts FROM segments WHERE meeting_id=? ORDER BY ts').all(req.params.id);
+    const actions = q('SELECT task, assignee, status FROM actions WHERE meeting_id=? ORDER BY id').all(req.params.id);
+    const document = {
+      meeting: context,
+      segments,
+      actions,
+      exported_at: Date.now(),
+      privacy: { local_only: cfg.aiProvider === 'local' }
+    };
+    res.setHeader('Content-Disposition', 'attachment; filename="oli-meeting-' + req.params.id + '.json"');
+    res.json(document);
   });
 
   app.delete('/api/meetings/:id', (req, res) => {
