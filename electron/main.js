@@ -6,13 +6,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from '../server/index.js';
 import { createLogger } from '../server/logger.js';
+import { createNativeCaptureManager } from './native-capture.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4173);
 const DB_PATH = path.resolve(app.getPath('userData'), process.env.DB_PATH || 'data/oli.db');
 const CONFIG_PATH = path.resolve(app.getPath('userData'), process.env.CONFIG_PATH || 'data/config.json');
 
-let notchWin, dashboardWin, tray, serverInstance, httpServer;
+let notchWin, dashboardWin, tray, serverInstance, httpServer, nativeCapture;
 let meetingActive = false;
 const logger = createLogger('desktop');
 let notchGeometry = null;
@@ -48,12 +49,8 @@ function sizes() {
   return { ...BASE_SIZE, pill: { ...BASE_SIZE.pill, w: pillWidth } };
 }
 
-function primaryDisplay() {
-  return screen.getPrimaryDisplay();
-}
-
 function topCenterBounds(w, h) {
-  const { bounds } = primaryDisplay();
+  const { bounds } = screen.getPrimaryDisplay();
   return {
     x: Math.round(bounds.x + (bounds.width - w) / 2),
     y: bounds.y,
@@ -64,8 +61,8 @@ function topCenterBounds(w, h) {
 
 function resizeNotch(state = 'pill') {
   if (!notchWin || notchWin.isDestroyed()) return;
-  const s = sizes()[state] || sizes().pill;
-  notchWin.setBounds(topCenterBounds(s.w, s.h));
+  const size = sizes()[state] || sizes().pill;
+  notchWin.setBounds(topCenterBounds(size.w, size.h));
 }
 
 function createNotchWindow() {
@@ -95,7 +92,7 @@ function createNotchWindow() {
   notchWin.setAlwaysOnTop(true, 'screen-saver');
   notchWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   notchWin.setContentProtection(true);
-  notchWin.loadURL(`http://127.0.0.1:${PORT}/notch.html`);
+  notchWin.loadURL('http://127.0.0.1:' + PORT + '/notch.html');
   notchWin.on('closed', () => (notchWin = null));
 }
 
@@ -117,7 +114,7 @@ function openDashboard() {
     }
   });
   dashboardWin.setMenuBarVisibility(false);
-  dashboardWin.loadURL(`http://127.0.0.1:${PORT}/dashboard.html`);
+  dashboardWin.loadURL('http://127.0.0.1:' + PORT + '/dashboard.html');
   dashboardWin.on('closed', () => (dashboardWin = null));
 }
 
@@ -151,13 +148,19 @@ async function boot() {
     httpServer.on('error', reject);
   });
   logger.info('local server ready', { port: PORT });
+
+  nativeCapture = createNativeCaptureManager({
+    port: PORT,
+    onError: (message) => notchWin?.webContents.send('oli:native-capture-error', { message })
+  });
+
   createNotchWindow();
   buildTray();
   globalShortcut.register('Alt+Space', () => notchWin?.webContents.send('oli:toggle-pin'));
 }
 
 app.whenReady().then(boot).catch((error) => {
-  console.error('Oli failed to boot:', error);
+  logger.error('Oli failed to boot', { reason: error.message });
   app.quit();
 });
 
@@ -168,10 +171,25 @@ ipcMain.on('oli:meeting-state', (_e, active) => {
   refreshTrayMenu();
 });
 ipcMain.handle('oli:platform', () => process.platform);
+ipcMain.handle('oli:native-capture-available', () => nativeCapture?.available() ?? false);
+ipcMain.handle('oli:native-capture-start', async (_event, meetingId) => {
+  if (process.platform !== 'darwin') return { active: false, reason: 'unsupported-platform' };
+  return nativeCapture?.start(String(meetingId)) ?? { active: false, reason: 'native-manager-unavailable' };
+});
+ipcMain.handle('oli:native-capture-stop', async () => {
+  await nativeCapture?.stop();
+  return { active: false };
+});
 
 const reposition = () => resizeNotch('pill');
 app.on('window-all-closed', (e) => e.preventDefault());
-app.on('before-quit', () => {
+app.on('before-quit', async (event) => {
+  if (nativeCapture?.active()) {
+    event.preventDefault();
+    try { await nativeCapture.stop(); } catch {}
+    app.quit();
+    return;
+  }
   try { httpServer?.close(); } catch {}
   try { serverInstance?.close(); } catch {}
   logger.info('shutdown complete');

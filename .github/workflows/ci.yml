@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, '01-*', '02-*', '03-*', '04-*', '05-*', '06-*', '07-*', '08-*']
+    branches: [main, '01-*', '02-*', '03-*', '04-*', '05-*', '06-*', '07-*', '08-*', '09-*', '10-*']
   pull_request:
     branches: [main]
 
@@ -27,3 +27,17 @@ jobs:
         run: npm run check
       - name: Test
         run: npm test
+
+  native-macos:
+    if: startsWith(github.head_ref, '09-') || startsWith(github.head_ref, '10-') || github.ref == 'refs/heads/main'
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Build native macOS services
+        run: swift build -c release --package-path native/macos

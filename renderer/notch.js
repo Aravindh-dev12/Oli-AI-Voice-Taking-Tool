@@ -15,6 +15,7 @@ let es = null;
 let stopFns = [];
 let words = { You: 0, Them: 0 };
 let commitments = 0;
+let nativeCaptureActive = false;
 
 function setState(state) {
   app.dataset.state = state;
@@ -54,6 +55,9 @@ window.oli?.onTogglePin(() => {
   pinned ? goShelf() : goPill();
 });
 window.oli?.onTrayToggleMeeting(() => (meetingId ? endMeeting() : startMeeting()));
+window.oli?.onNativeCaptureError((payload) => {
+  $('#footer').textContent = payload?.message || 'Native capture error.';
+});
 
 $('.view-pill').addEventListener('click', () => {
   if (!meetingId) startMeeting();
@@ -109,63 +113,108 @@ function setMeetingUi(active) {
   window.oli?.reportMeetingState(active);
 }
 
+async function createMeeting() {
+  const result = await api('/meetings', {
+    method: 'POST',
+    body: JSON.stringify({ title: 'Meeting ' + new Date().toLocaleString() })
+  });
+  return result.id;
+}
+
+async function deleteMeetingQuietly(id) {
+  try { await api('/meetings/' + encodeURIComponent(id), { method: 'DELETE' }); } catch {}
+}
+
+function registerStream(id) {
+  es = new EventSource('/api/meetings/' + encodeURIComponent(id) + '/stream');
+  es.addEventListener('segment', (event) => addSegment(JSON.parse(event.data)));
+  es.addEventListener('whisper', (event) => addWhisper(JSON.parse(event.data)));
+  es.addEventListener('action', (event) => addAction(JSON.parse(event.data)));
+  es.addEventListener('error', (event) => {
+    try {
+      const payload = JSON.parse(event.data);
+      $('#footer').textContent = payload.message || 'Live processing error.';
+    } catch {
+      $('#footer').textContent = 'Live stream disconnected; Oli will reconnect automatically.';
+    }
+  });
+}
+
 async function startMeeting() {
   if (meetingId) return;
+
+  let createdId = null;
   let mic;
   let disp;
+
   try {
+    const platform = await window.oli?.platform();
+    const nativeAvailable = platform === 'darwin' && await window.oli?.nativeCaptureAvailable();
+
+    if (nativeAvailable) {
+      createdId = await createMeeting();
+      meetingId = createdId;
+      try {
+        const native = await window.oli.startNativeCapture(createdId);
+        if (native?.active) {
+          nativeCaptureActive = true;
+          words = { You: 0, Them: 0 };
+          commitments = 0;
+          $('#transcript').replaceChildren();
+          $('#whispers').replaceChildren();
+          $('#pillCount').textContent = '';
+          $('#footer').textContent = 'Native macOS capture active. Mic and system audio are isolated locally.';
+          setMeetingUi(true);
+          registerStream(createdId);
+          stopFns = [async () => {
+            await window.oli.stopNativeCapture();
+            nativeCaptureActive = false;
+          }];
+          pinned = true;
+          goShelf();
+          return;
+        }
+      } catch (nativeError) {
+        $('#footer').textContent = 'Native capture unavailable: ' + nativeError.message + '. Falling back to browser capture.';
+      }
+      await deleteMeetingQuietly(createdId);
+      meetingId = null;
+      createdId = null;
+    }
+
     mic = await navigator.mediaDevices.getUserMedia({
       audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 }
     });
     disp = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
-
     if (!disp.getAudioTracks().length) {
       throw new Error('No shared audio was selected. Choose tab audio or system audio.');
     }
 
-    const { id } = await api('/meetings', {
-      method: 'POST',
-      body: JSON.stringify({ title: 'Meeting ' + new Date().toLocaleString() })
-    });
-    meetingId = id;
+    createdId = await createMeeting();
+    meetingId = createdId;
     words = { You: 0, Them: 0 };
     commitments = 0;
     $('#transcript').replaceChildren();
     $('#whispers').replaceChildren();
     $('#pillCount').textContent = '';
-    $('#footer').textContent = 'Listening. Capture is separated into You and Them channels.';
+    $('#footer').textContent = 'Browser capture active. Capture is separated into You and Them channels.';
     setMeetingUi(true);
+    registerStream(createdId);
 
-    es = new EventSource('/api/meetings/' + encodeURIComponent(meetingId) + '/stream');
-    es.addEventListener('segment', (event) => addSegment(JSON.parse(event.data)));
-    es.addEventListener('whisper', (event) => addWhisper(JSON.parse(event.data)));
-    es.addEventListener('action', (event) => addAction(JSON.parse(event.data)));
-    es.addEventListener('error', (event) => {
-      try {
-        const payload = JSON.parse(event.data);
-        $('#footer').textContent = payload.message || 'Live processing error.';
-      } catch {
-        $('#footer').textContent = 'Live stream disconnected; Oli will reconnect automatically.';
-      }
-    });
-
-    const id = meetingId;
     stopFns = [
       createTrackCapture({
         stream: mic,
         source: 'me',
-        meetingId: id,
+        meetingId: createdId,
         onStatus: (message) => { $('#footer').textContent = message; }
       }),
       createTrackCapture({
         stream: new MediaStream(disp.getAudioTracks()),
         source: 'them',
-        meetingId: id,
+        meetingId: createdId,
         onStatus: (message) => { $('#footer').textContent = message; }
       }),
-      async () => {
-        disp.getTracks().forEach((track) => track.stop());
-      }
+      async () => { disp.getTracks().forEach((track) => track.stop()); }
     ];
 
     const videoTrack = disp.getVideoTracks()[0];
@@ -175,9 +224,11 @@ async function startMeeting() {
   } catch (error) {
     mic?.getTracks().forEach((track) => track.stop());
     disp?.getTracks().forEach((track) => track.stop());
+    if (createdId) await deleteMeetingQuietly(createdId);
+    meetingId = null;
     es?.close();
     es = null;
-    meetingId = null;
+    nativeCaptureActive = false;
     setMeetingUi(false);
     $('#footer').textContent = 'Could not start: ' + error.message;
   }
