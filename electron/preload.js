@@ -10,5 +10,9 @@ contextBridge.exposeInMainWorld('oli', {
   nativeCaptureAvailable: () => ipcRenderer.invoke('oli:native-capture-available'),
   startNativeCapture: (meetingId) => ipcRenderer.invoke('oli:native-capture-start', meetingId),
   stopNativeCapture: () => ipcRenderer.invoke('oli:native-capture-stop'),
+  onNativeCaptureError: (cb) => ipcRenderer.on('oli:native-capture-error', (_event, payload) => cb(payload)),
+  nativeCaptureAvailable: () => ipcRenderer.invoke('oli:native-capture-available'),
+  startNativeCapture: (meetingId) => ipcRenderer.invoke('oli:native-capture-start', meetingId),
+  stopNativeCapture: () => ipcRenderer.invoke('oli:native-capture-stop'),
   onNativeCaptureError: (cb) => ipcRenderer.on('oli:native-capture-error', (_event, payload) => cb(payload))
 });
