@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from '../server/index.js';
 import { createLogger } from '../server/logger.js';
+import { createNativeCaptureManager } from './native-capture.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4173);
@@ -14,6 +15,8 @@ const CONFIG_PATH = path.resolve(app.getPath('userData'), process.env.CONFIG_PAT
 
 let notchWin, dashboardWin, tray, serverInstance, httpServer;
 let meetingActive = false;
+let nativeCapture;
+
 const logger = createLogger('desktop');
 let notchGeometry = null;
 
@@ -151,6 +154,10 @@ async function boot() {
     httpServer.on('error', reject);
   });
   logger.info('local server ready', { port: PORT });
+  nativeCapture = createNativeCaptureManager({
+    port: PORT,
+    onError: (message) => notchWin?.webContents.send('oli:native-capture-error', { message })
+  });
   createNotchWindow();
   buildTray();
   globalShortcut.register('Alt+Space', () => notchWin?.webContents.send('oli:toggle-pin'));
@@ -168,10 +175,27 @@ ipcMain.on('oli:meeting-state', (_e, active) => {
   refreshTrayMenu();
 });
 ipcMain.handle('oli:platform', () => process.platform);
+ipcMain.handle('oli:native-capture-available', () => nativeCapture?.available() ?? false);
+ipcMain.handle('oli:native-capture-start', async (_event, meetingId) => {
+  if (process.platform !== 'darwin') return { active: false, reason: 'unsupported-platform' };
+  return nativeCapture.start(String(meetingId));
+});
+ipcMain.handle('oli:native-capture-stop', async () => {
+  await nativeCapture?.stop();
+  return { active: false };
+});
 
 const reposition = () => resizeNotch('pill');
 app.on('window-all-closed', (e) => e.preventDefault());
-app.on('before-quit', () => {
+app.on('before-quit', async (event) => {
+  try {
+    if (nativeCapture?.active()) {
+      event.preventDefault();
+      await nativeCapture.stop();
+      app.quit();
+      return;
+    }
+  } catch {}
   try { httpServer?.close(); } catch {}
   try { serverInstance?.close(); } catch {}
   logger.info('shutdown complete');
