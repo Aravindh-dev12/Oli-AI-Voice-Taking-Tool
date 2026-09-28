@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import { openDb } from './db.js';
 import { loadConfig, saveConfig, redact } from './config.js';
 import { parseCaptureSequence, parseCaptureSource, validateWavPayload } from './audio.js';
+import { createAiRuntime } from './ai/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -15,44 +16,9 @@ export function createServer({ dbPath, configPath }) {
   const db = openDb(dbPath);
   const q = (sql) => db.prepare(sql);
   let cfg = loadConfig(configPath);
+  let ai = createAiRuntime(cfg);
 
-  async function gemini(parts, json = false) {
-    if (!cfg.geminiApiKey) throw new Error('Add a Gemini API key in Settings first.');
-    const r = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${cfg.geminiModel}:generateContent`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': cfg.geminiApiKey },
-        body: JSON.stringify({
-          contents: [{ parts }],
-          generationConfig: { temperature: 0.1, ...(json && { responseMimeType: 'application/json' }) }
-        })
-      }
-    );
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error?.message || 'Gemini request failed');
-    return (d.candidates?.[0]?.content?.parts || []).map((p) => p.text || '').join('').trim();
-  }
 
-  async function copilot(system, user) {
-    if (!cfg.nvidiaApiKey) return gemini([{ text: `${system}\n\n${user}` }]);
-    const r = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.nvidiaApiKey}` },
-      body: JSON.stringify({
-        model: cfg.nvidiaModel,
-        temperature: 0.1,
-        max_tokens: 60,
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user }
-        ]
-      })
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.detail || d.error?.message || 'NVIDIA request failed');
-    return d.choices[0].message.content.trim();
-  }
 
   // ---- Live event fan-out (SSE) ----
   const clients = new Map();
@@ -67,7 +33,7 @@ export function createServer({ dbPath, configPath }) {
       .join(' OR ');
     const hit = terms ? q('SELECT title, content FROM kb WHERE kb MATCH ? ORDER BY rank LIMIT 1').get(terms) : null;
     try {
-      const tip = await copilot(
+      const tip = await ai.copilot(
         'You are a real-time negotiation copilot. Reply with ONE bullet under 25 words: a killer fact or a sharp pivot question. Use ONLY the verified context if given; otherwise ask a discovery question. No filler, no preamble.',
         `Verified context:\n${hit ? hit.content.slice(0, 600) : 'none'}\n\nProspect said: "${text}"`
       );
@@ -81,11 +47,12 @@ export function createServer({ dbPath, configPath }) {
   app.use(express.json({ limit: '1mb' }));
   app.use('/', express.static(path.join(__dirname, '..', 'renderer')));
 
-  app.get('/api/health', (_, res) => res.json({ ok: true, gemini: !!cfg.geminiApiKey, nvidia: !!cfg.nvidiaApiKey }));
+  app.get('/api/health', (_, res) => res.json({ ok: true, aiReady: ai.status().ready, ai: ai.status() }));
 
   app.get('/api/settings', (_, res) => res.json(redact(cfg)));
   app.post('/api/settings', (req, res) => {
     cfg = saveConfig(configPath, { ...cfg, ...req.body });
+    ai = createAiRuntime(cfg);
     res.json(redact(cfg));
   });
 
@@ -133,10 +100,11 @@ export function createServer({ dbPath, configPath }) {
     const speaker = req.query.src === 'me' ? 'You' : 'Them';
     if (!q('SELECT 1 FROM meetings WHERE id=?').get(id)) return res.sendStatus(404);
     try {
-      const text = await gemini([
+      const text = await ai.transcribe(req.body);
+      /*
         { text: 'Transcribe this audio verbatim. Output only the spoken words, nothing else. If there is no clear speech, output nothing.' },
         { inline_data: { mime_type: 'audio/wav', data: req.body.toString('base64') } }
-      ]);
+      ]); */
       if (text.length < 2) return res.json({ ok: true });
       const seg = { speaker, text, ts: Date.now() };
       q('INSERT INTO segments(meeting_id, speaker, text, ts) VALUES(?,?,?,?)').run(id, speaker, text, seg.ts);
