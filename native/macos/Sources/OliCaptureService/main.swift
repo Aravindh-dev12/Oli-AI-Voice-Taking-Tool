@@ -7,7 +7,7 @@ import ScreenCaptureKit
 
 private let targetSampleRate = 16_000
 private let targetChannels = 1
-private let chunkFrames = 96_000
+private let chunkFrames = 16_000
 
 struct Event: Codable {
     let type: String
