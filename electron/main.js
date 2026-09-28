@@ -163,13 +163,18 @@ async function boot() {
       if (payload?.event === 'quit') return app.quit();
       notchWin?.webContents.send('oli:native-hud-command', payload);
     },
-    onError: (message) => notchWin?.webContents.send('oli:native-hud-error', { message })
+    onError: (message) => notchWin?.webContents.send('oli:native-hud-error', { message }),
+    onExit: () => {
+      nativeHudActive = false;
+      if (!notchWin?.isDestroyed()) notchWin?.showInactive?.();
+    }
   });
   nativeHudActive = nativeHud.available();
   createNotchWindow(!nativeHudActive);
   if (nativeHudActive) {
     const started = nativeHud.start();
     nativeHudActive = !!started?.active;
+    if (!nativeHudActive) notchWin.showInactive?.();
   }
   buildTray();
   globalShortcut.register('Alt+Space', () => {
