@@ -1,81 +1,236 @@
-const $ = (s) => document.querySelector(s);
-const api = (p, o = {}) => fetch('/api' + p, { headers: { 'Content-Type': 'application/json' }, ...o }).then((r) => r.json());
-const el = (t, c, x) => { const e = document.createElement(t); if (c) e.className = c; if (x != null) e.textContent = x; return e; };
+const $ = (selector) => document.querySelector(selector);
+
+async function api(path, options = {}) {
+  const response = await fetch('/api' + path, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || 'Request failed (' + response.status + ')');
+  return payload;
+}
+
+const el = (tag, className, text) => {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text != null) node.textContent = text;
+  return node;
+};
 
 function tab(name) {
-  document.querySelectorAll('main').forEach((m) => m.classList.toggle('on', m.id === name));
-  document.querySelectorAll('nav button').forEach((b) => b.classList.toggle('on', b.dataset.t === name));
-  if (name === 'hist') loadHistory();
+  document.querySelectorAll('main').forEach((main) => main.classList.toggle('on', main.id === name));
+  document.querySelectorAll('nav button').forEach((button) => button.classList.toggle('on', button.dataset.t === name));
+  if (name === 'hist') loadHistory($('#meetingSearch').value);
   if (name === 'kb') loadKb();
   if (name === 'settings') loadSettings();
+  if (name === 'privacy') loadPrivacy();
 }
-document.querySelectorAll('nav button').forEach((b) => (b.onclick = () => tab(b.dataset.t)));
 
-async function loadHistory() {
-  const list = await api('/meetings');
-  const ul = $('#mlist'); ul.replaceChildren();
-  if (!list.length) { ul.append(el('li', 'empty', 'No meetings yet — start one from the notch.')); return; }
-  list.forEach((m) => {
-    const li = el('li');
-    li.append(el('span', 't', m.title), el('span', 'd', new Date(m.started_at).toLocaleString()));
-    li.onclick = () => showMeeting(m.id);
-    ul.append(li);
-  });
+document.querySelectorAll('nav button').forEach((button) => {
+  button.addEventListener('click', () => tab(button.dataset.t));
+});
+
+async function loadHistory(query = '') {
+  try {
+    const list = await api('/meetings');
+    const ul = $('#mlist');
+    ul.replaceChildren();
+    const needle = query.trim().toLowerCase();
+    const filtered = list.filter((meeting) =>
+      !needle ||
+      String(meeting.title || '').toLowerCase().includes(needle) ||
+      String(meeting.summary || '').toLowerCase().includes(needle)
+    );
+    if (!filtered.length) {
+      ul.append(el('li', 'empty', 'No matching meetings.'));
+      return;
+    }
+    filtered.forEach((meeting) => {
+      const li = el('li');
+      li.append(
+        el('span', 't', meeting.title),
+        el('span', 'd', new Date(meeting.started_at).toLocaleString())
+      );
+      li.addEventListener('click', () => showMeeting(meeting.id));
+      ul.append(li);
+    });
+  } catch (error) {
+    $('#histMsg').textContent = error.message;
+  }
 }
+
 async function showMeeting(id) {
-  const { meeting, segments, actions } = await api('/meetings/' + id);
-  const pane = $('#mdetail'); pane.replaceChildren();
-  pane.append(el('h3', 0, meeting.title));
-  pane.append(el('p', 0, meeting.summary || 'Summary not available.'));
+  const { meeting, segments, actions } = await api('/meetings/' + encodeURIComponent(id));
+  const pane = $('#mdetail');
+  pane.replaceChildren();
+  pane.append(el('h3', null, meeting.title));
+  pane.append(el('p', null, meeting.summary || 'Summary not available.'));
+  const controls = el('div', 'row');
+  const exportButton = el('button', 'primary', 'Export JSON');
+  exportButton.addEventListener('click', async () => {
+    try {
+      const response = await fetch('/api/meetings/' + encodeURIComponent(id) + '/export');
+      if (!response.ok) throw new Error('Export failed.');
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'oli-meeting-' + id + '.json';
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      $('#histMsg').textContent = error.message;
+    }
+  });
+  controls.append(exportButton);
+  pane.append(controls);
+
   if (actions.length) {
     const ul = el('ul');
-    actions.forEach((a) => ul.append(el('li', 0, `${a.task} — ${a.assignee}`)));
-    pane.append(el('h3', 0, 'Action items'), ul);
+    actions.forEach((action) => ul.append(el('li', null, action.task + ' — ' + action.assignee + ' [' + action.status + ']')));
+    pane.append(el('h3', null, 'Action items'), ul);
   }
-  pane.append(el('h3', 0, 'Transcript'));
-  segments.forEach((s) => {
-    const d = el('div', 'seg');
-    d.append(el('b', 0, s.speaker), document.createTextNode(s.text));
-    pane.append(d);
+
+  pane.append(el('h3', null, 'Transcript'));
+  segments.forEach((segment) => {
+    const row = el('div', 'seg');
+    row.append(el('b', null, segment.speaker), document.createTextNode(segment.text));
+    pane.append(row);
   });
+
   const del = el('button', 'danger', 'Delete this meeting');
-  del.onclick = async () => { if (confirm('Delete this meeting and its transcript?')) { await api('/meetings/' + id, { method: 'DELETE' }); loadHistory(); pane.replaceChildren(el('p', 'empty', 'Deleted.')); } };
+  del.addEventListener('click', async () => {
+    if (!confirm('Delete this meeting, transcript and action items?')) return;
+    await api('/meetings/' + encodeURIComponent(id), { method: 'DELETE' });
+    pane.replaceChildren(el('p', 'empty', 'Deleted.'));
+    loadHistory($('#meetingSearch').value);
+    loadPrivacy();
+  });
   pane.append(document.createElement('br'), del);
 }
 
+$('#meetingSearch').addEventListener('input', () => loadHistory($('#meetingSearch').value));
+
 async function loadKb() {
-  const list = await api('/kb');
-  const ul = $('#klist'); ul.replaceChildren();
-  list.forEach((k) => {
-    const li = el('li');
-    const d = document.createElement('div');
-    d.append(el('b', 0, k.title), el('span', 0, k.content.slice(0, 140)));
-    const del = el('button', 'danger', 'Delete');
-    del.onclick = async () => { await api('/kb/' + k.id, { method: 'DELETE' }); loadKb(); };
-    li.append(d, del); ul.append(li);
-  });
+  try {
+    const list = await api('/kb');
+    const ul = $('#klist');
+    ul.replaceChildren();
+    if (!list.length) ul.append(el('li', 'empty', 'No knowledge entries yet.'));
+    list.forEach((entry) => {
+      const li = el('li');
+      const content = el('div');
+      content.append(el('b', null, entry.title), el('span', null, entry.content.slice(0, 180)));
+      const del = el('button', 'danger', 'Delete');
+      del.addEventListener('click', async () => {
+        await api('/kb/' + encodeURIComponent(entry.id), { method: 'DELETE' });
+        loadKb();
+        loadPrivacy();
+      });
+      li.append(content, del);
+      ul.append(li);
+    });
+  } catch (error) {
+    $('#privacyMsg').textContent = error.message;
+  }
 }
-$('#ka').onclick = async () => {
-  const title = $('#kt').value.trim(), content = $('#kc').value.trim();
+
+$('#ka').addEventListener('click', async () => {
+  const title = $('#kt').value.trim();
+  const content = $('#kc').value.trim();
   if (!title || !content) return;
-  await api('/kb', { method: 'POST', body: JSON.stringify({ title, content }) });
-  $('#kt').value = ''; $('#kc').value = ''; loadKb();
-};
+  try {
+    await api('/kb', { method: 'POST', body: JSON.stringify({ title, content }) });
+    $('#kt').value = '';
+    $('#kc').value = '';
+    loadKb();
+    loadPrivacy();
+  } catch (error) {
+    $('#privacyMsg').textContent = error.message;
+  }
+});
 
 async function loadSettings() {
-  const s = await api('/settings');
-  $('#gStatus').textContent = s.geminiSet ? 'set' : 'not set'; $('#gStatus').classList.toggle('set', s.geminiSet);
-  $('#nStatus').textContent = s.nvidiaSet ? 'set' : 'not set'; $('#nStatus').classList.toggle('set', s.nvidiaSet);
-  $('#gModel').value = s.geminiModel; $('#nModel').value = s.nvidiaModel;
+  const settings = await api('/settings');
+  $('#aiProvider').value = settings.aiProvider;
+  $('#aiTimeoutMs').value = settings.aiTimeoutMs;
+  $('#localTranscriptionUrl').value = settings.localTranscriptionUrl;
+  $('#localTranscriptionModel').value = settings.localTranscriptionModel;
+  $('#localChatUrl').value = settings.localChatUrl;
+  $('#localChatModel').value = settings.localChatModel;
+  $('#gStatus').textContent = settings.geminiSet ? 'set' : 'not set';
+  $('#gStatus').classList.toggle('set', settings.geminiSet);
+  $('#nStatus').textContent = settings.nvidiaSet ? 'set' : 'not set';
+  $('#nStatus').classList.toggle('set', settings.nvidiaSet);
+  $('#gModel').value = settings.geminiModel;
+  $('#nModel').value = settings.nvidiaModel;
 }
-$('#saveSettings').onclick = async () => {
-  const body = { geminiModel: $('#gModel').value.trim(), nvidiaModel: $('#nModel').value.trim() };
+
+$('#saveSettings').addEventListener('click', async () => {
+  const body = {
+    aiProvider: $('#aiProvider').value,
+    aiTimeoutMs: Number($('#aiTimeoutMs').value),
+    localTranscriptionUrl: $('#localTranscriptionUrl').value.trim(),
+    localTranscriptionModel: $('#localTranscriptionModel').value.trim(),
+    localChatUrl: $('#localChatUrl').value.trim(),
+    localChatModel: $('#localChatModel').value.trim(),
+    geminiModel: $('#gModel').value.trim(),
+    nvidiaModel: $('#nModel').value.trim()
+  };
   if ($('#gKey').value.trim()) body.geminiApiKey = $('#gKey').value.trim();
   if ($('#nKey').value.trim()) body.nvidiaApiKey = $('#nKey').value.trim();
-  await api('/settings', { method: 'POST', body: JSON.stringify(body) });
-  $('#gKey').value = ''; $('#nKey').value = '';
-  $('#saveMsg').textContent = 'Saved.'; setTimeout(() => ($('#saveMsg').textContent = ''), 2000);
-  loadSettings();
-};
+
+  try {
+    await api('/settings', { method: 'POST', body: JSON.stringify(body) });
+    $('#gKey').value = '';
+    $('#nKey').value = '';
+    $('#saveMsg').textContent = 'Saved.';
+    loadSettings();
+  } catch (error) {
+    $('#saveMsg').textContent = error.message;
+  }
+});
+
+async function loadPrivacy() {
+  try {
+    const privacy = await api('/privacy');
+    $('#privacyMeetings').textContent = privacy.meetingCount;
+    $('#privacySegments').textContent = privacy.transcriptCount;
+    $('#privacyKb').textContent = privacy.kbCount;
+    $('#retentionDays').value = privacy.retentionDays;
+    $('#privacyMode').textContent = privacy.localOnly
+      ? 'Local AI mode: configured model endpoints are restricted to localhost.'
+      : 'Current AI mode may use a configured cloud provider. Review AI settings before capturing sensitive meetings.';
+  } catch (error) {
+    $('#privacyMsg').textContent = error.message;
+  }
+}
+
+$('#savePrivacy').addEventListener('click', async () => {
+  try {
+    const data = await api('/privacy', {
+      method: 'POST',
+      body: JSON.stringify({ retentionDays: Number($('#retentionDays').value) })
+    });
+    $('#privacyMsg').textContent = data.deleted
+      ? 'Saved. Removed ' + data.deleted + ' expired meeting(s).'
+      : 'Saved.';
+    loadPrivacy();
+    loadHistory($('#meetingSearch').value);
+  } catch (error) {
+    $('#privacyMsg').textContent = error.message;
+  }
+});
+
+$('#runCleanup').addEventListener('click', async () => {
+  try {
+    const data = await api('/privacy/cleanup', { method: 'POST' });
+    $('#privacyMsg').textContent = 'Cleanup removed ' + data.deleted + ' meeting(s).';
+    loadPrivacy();
+    loadHistory($('#meetingSearch').value);
+  } catch (error) {
+    $('#privacyMsg').textContent = error.message;
+  }
+});
 
 loadHistory();
