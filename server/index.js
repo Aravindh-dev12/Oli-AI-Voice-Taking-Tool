@@ -129,9 +129,6 @@ export function createServer({ dbPath, configPath }) {
 
   app.post('/api/privacy', (req, res) => {
     cfg = saveConfig(configPath, { ...cfg, retentionDays: req.body.retentionDays });
-    const previousAi = ai;
-    ai = createAiRuntime(cfg);
-    previousAi.close();
     const deleted = applyRetentionPolicy(db, cfg.retentionDays);
     res.json({ retentionDays: cfg.retentionDays, deleted });
   });
@@ -146,12 +143,6 @@ export function createServer({ dbPath, configPath }) {
     const previousAi = ai;
     ai = createAiRuntime(cfg);
     previousAi.close();
-    vector = createVectorStore(db, {
-      embeddingUrl: cfg.localEmbeddingUrl,
-      embeddingModel: cfg.localEmbeddingModel,
-      dimensions: cfg.embeddingDimensions,
-      timeoutMs: cfg.aiTimeoutMs
-    });
     vector = createVectorStore(db, {
       embeddingUrl: cfg.localEmbeddingUrl,
       embeddingModel: cfg.localEmbeddingModel,
