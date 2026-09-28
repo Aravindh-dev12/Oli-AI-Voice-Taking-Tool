@@ -1,32 +1,75 @@
 import 'dotenv/config';
 import { app, BrowserWindow, Tray, Menu, screen, ipcMain, globalShortcut, nativeImage } from 'electron';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createServer } from '../server/index.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4173);
-const DB_PATH = path.join(__dirname, '..', process.env.DB_PATH || './data/oli.db');
-const CONFIG_PATH = path.join(__dirname, '..', process.env.CONFIG_PATH || './data/config.json');
+const DB_PATH = path.resolve(app.getPath('userData'), process.env.DB_PATH || 'data/oli.db');
+const CONFIG_PATH = path.resolve(app.getPath('userData'), process.env.CONFIG_PATH || 'data/config.json');
 
 let notchWin, dashboardWin, tray;
 let meetingActive = false;
+let notchGeometry = null;
 
-// Sizes must match the CSS states in renderer/notch.css
-const SIZE = {
+const BASE_SIZE = {
   pill: { w: 236, h: 34 },
   flare: { w: 480, h: 50 },
   shelf: { w: 560, h: 320 }
 };
 
+function probeNotchGeometry() {
+  if (process.platform !== 'darwin') return null;
+  const candidates = [
+    path.join(process.resourcesPath, 'native', 'OliNotchGeometry'),
+    path.join(__dirname, '..', 'native', 'macos', '.build', 'release', 'OliNotchGeometry')
+  ];
+  const binary = candidates.find((p) => fs.existsSync(p));
+  if (!binary) return null;
+  try {
+    const result = spawnSync(binary, ['--geometry'], { encoding: 'utf8', timeout: 1500 });
+    if (result.status !== 0 || !result.stdout?.trim()) return null;
+    return JSON.parse(result.stdout);
+  } catch {
+    return null;
+  }
+}
+
+function sizes() {
+  const physicalNotch = notchGeometry?.notchWidth;
+  const pillWidth = physicalNotch && physicalNotch >= 160 && physicalNotch <= 320
+    ? Math.round(physicalNotch)
+    : BASE_SIZE.pill.w;
+  return { ...BASE_SIZE, pill: { ...BASE_SIZE.pill, w: pillWidth } };
+}
+
+function primaryDisplay() {
+  return screen.getPrimaryDisplay();
+}
+
 function topCenterBounds(w, h) {
-  const { bounds } = screen.getPrimaryDisplay();
-  return { x: Math.round(bounds.x + (bounds.width - w) / 2), y: bounds.y, width: w, height: h };
+  const { bounds } = primaryDisplay();
+  return {
+    x: Math.round(bounds.x + (bounds.width - w) / 2),
+    y: bounds.y,
+    width: w,
+    height: h
+  };
+}
+
+function resizeNotch(state = 'pill') {
+  if (!notchWin || notchWin.isDestroyed()) return;
+  const s = sizes()[state] || sizes().pill;
+  notchWin.setBounds(topCenterBounds(s.w, s.h));
 }
 
 function createNotchWindow() {
+  notchGeometry = probeNotchGeometry();
   notchWin = new BrowserWindow({
-    ...topCenterBounds(SIZE.pill.w, SIZE.pill.h),
+    ...topCenterBounds(sizes().pill.w, sizes().pill.h),
     frame: false,
     transparent: true,
     hasShadow: false,
@@ -37,20 +80,20 @@ function createNotchWindow() {
     fullscreenable: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    focusable: false, // never steals focus from your meeting app
+    focusable: false,
     backgroundColor: '#00000000',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: true
     }
   });
 
   notchWin.setAlwaysOnTop(true, 'screen-saver');
   notchWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  // The core "ghost window" trick: invisible to screen shares & recordings on both macOS and Windows.
   notchWin.setContentProtection(true);
-  notchWin.loadURL(`http://localhost:${PORT}/notch.html`);
+  notchWin.loadURL(`http://127.0.0.1:${PORT}/notch.html`);
   notchWin.on('closed', () => (notchWin = null));
 }
 
@@ -67,11 +110,12 @@ function openDashboard() {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: true
     }
   });
   dashboardWin.setMenuBarVisibility(false);
-  dashboardWin.loadURL(`http://localhost:${PORT}/dashboard.html`);
+  dashboardWin.loadURL(`http://127.0.0.1:${PORT}/dashboard.html`);
   dashboardWin.on('closed', () => (dashboardWin = null));
 }
 
@@ -97,22 +141,24 @@ function refreshTrayMenu() {
   tray.setContextMenu(menu);
 }
 
-app.whenReady().then(() => {
+async function boot() {
   if (process.platform === 'darwin' && app.dock) app.dock.hide();
-
   const { app: expressApp } = createServer({ dbPath: DB_PATH, configPath: CONFIG_PATH });
-  expressApp.listen(PORT, () => {
-    createNotchWindow();
-    buildTray();
-    globalShortcut.register('Alt+Space', () => notchWin?.webContents.send('oli:toggle-pin'));
+  await new Promise((resolve, reject) => {
+    const server = expressApp.listen(PORT, '127.0.0.1', resolve);
+    server.on('error', reject);
   });
+  createNotchWindow();
+  buildTray();
+  globalShortcut.register('Alt+Space', () => notchWin?.webContents.send('oli:toggle-pin'));
+}
+
+app.whenReady().then(boot).catch((error) => {
+  console.error('Oli failed to boot:', error);
+  app.quit();
 });
 
-// Renderer asks to resize+recenter itself when it switches visual state
-ipcMain.on('oli:resize', (_e, state) => {
-  const s = SIZE[state] || SIZE.pill;
-  notchWin?.setBounds(topCenterBounds(s.w, s.h));
-});
+ipcMain.on('oli:resize', (_e, state) => resizeNotch(state));
 ipcMain.on('oli:open-dashboard', openDashboard);
 ipcMain.on('oli:meeting-state', (_e, active) => {
   meetingActive = !!active;
@@ -120,5 +166,11 @@ ipcMain.on('oli:meeting-state', (_e, active) => {
 });
 ipcMain.handle('oli:platform', () => process.platform);
 
-app.on('window-all-closed', (e) => e.preventDefault()); // tray-resident app
-app.on('will-quit', () => globalShortcut.unregisterAll());
+const reposition = () => resizeNotch('pill');
+app.on('window-all-closed', (e) => e.preventDefault());
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll();
+});
+screen.on('display-added', reposition);
+screen.on('display-removed', reposition);
+screen.on('display-metrics-changed', reposition);
