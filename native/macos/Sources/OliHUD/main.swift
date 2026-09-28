@@ -23,6 +23,10 @@ final class HUDModel: ObservableObject, @unchecked Sendable {
     private var flareTask: Task<Void, Never>?
 
     func apply(_ object: [String: Any]) {
+        if let type = object["type"] as? String, type == "action" {
+            commitments += 1
+            if let text = object["task"] as? String { footer = "Commitment noted: " + text }
+        }
         if let state = object["state"] as? String, let next = HUDState(rawValue: state) { setState(next) }
         if let ratio = object["talkRatio"] as? Double { talkRatio = max(0, min(1, ratio)) }
         if let count = object["commitments"] as? Int { commitments = max(0, count) }
@@ -238,6 +242,7 @@ final class HUDController: NSObject, NSApplicationDelegate, @unchecked Sendable 
             case "endMeeting": model.action("endMeeting")
             case "toggleMeeting": model.action("toggleMeeting")
             case "dashboard": model.action("dashboard")
+            case "quit": NSApp.terminate(nil)
             default: break
             }
         } else { model.apply(object) }
