@@ -1,13 +1,16 @@
 {
   "name": "oli",
   "productName": "Oli",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Sovereign AI meeting copilot that lives in a notch-style overlay on Mac and Windows.",
   "main": "electron/main.js",
   "type": "module",
   "scripts": {
     "start": "electron .",
-    "dist:mac": "electron-builder --mac",
+    "check": "node --check electron/main.js && node --check electron/preload.js && node --check server/index.js",
+    "test": "node --test",
+    "build:native:mac": "swift build -c release --package-path native/macos",
+    "dist:mac": "npm run build:native:mac && electron-builder --mac",
     "dist:win": "electron-builder --win"
   },
   "dependencies": {
@@ -21,15 +24,23 @@
   },
   "build": {
     "appId": "dev.oli.copilot",
-    "files": ["electron/**", "server/**", "renderer/**", "assets/**", "package.json"],
-    "extraResources": [{ "from": "data", "to": "data" }],
+    "files": [
+      "electron/**",
+      "server/**",
+      "renderer/**",
+      "assets/**",
+      "package.json"
+    ],
+    "extraResources": [
+      { "from": "native/macos/.build/release/OliNotchGeometry", "to": "native/OliNotchGeometry", "filter": ["**/*"] }
+    ],
     "mac": {
       "target": "dmg",
       "icon": "assets/icon.png",
       "category": "public.app-category.productivity",
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Oli listens to your microphone to transcribe your side of the conversation.",
-        "NSScreenCaptureUsageDescription": "Oli captures shared meeting-tab or system audio so it can transcribe the other participants. No video or screen image is recorded."
+        "NSMicrophoneUsageDescription": "Oli uses your microphone to transcribe your side of the conversation.",
+        "NSScreenCaptureUsageDescription": "Oli uses screen capture only to receive shared meeting-tab/system audio. Video frames are not stored."
       }
     },
     "win": {
