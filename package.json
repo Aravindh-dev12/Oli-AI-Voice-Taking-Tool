@@ -11,7 +11,8 @@
     "test": "node --test",
     "build:native:mac": "swift build -c release --package-path native/macos",
     "dist:mac": "npm run build:native:mac && electron-builder --mac",
-    "dist:win": "electron-builder --win"
+    "dist:win": "electron-builder --win",
+    "mcp": "node mcp/server.js"
   },
   "dependencies": {
     "better-sqlite3": "^11.8.0",
@@ -32,7 +33,13 @@
       "package.json"
     ],
     "extraResources": [
-      { "from": "native/macos/.build/release/OliNotchGeometry", "to": "native/OliNotchGeometry", "filter": ["**/*"] }
+      {
+        "from": "native/macos/.build/release/OliNotchGeometry",
+        "to": "native/OliNotchGeometry",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "mac": {
       "target": "dmg",
