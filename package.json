@@ -9,7 +9,7 @@
     "start": "electron .",
     "check": "node --check electron/main.js && node --check electron/preload.js && node --check electron/native-capture.js && node --check server/index.js && node --check server/audio.js && node --check server/config.js && node --check server/db.js && node --check server/logger.js && node --check server/rag.js && node --check server/knowledge.js && node --check server/obsidian.js && node --check server/vector.js && node --check server/ai/index.js && node --check server/ai/utils.js && node --check server/ai/gemini.js && node --check server/ai/local.js && node --check server/ai/nvidia.js && node --check server/ai/whisper.js && node --check renderer/audio-capture.js && node --check mcp/server.js && bash -n scripts/setup-local-llm.sh && bash -n scripts/run-local-chat.sh && bash -n scripts/bootstrap-sovereign.sh",
     "test": "node --test",
-    "build:native:mac": "swift build -c release --package-path native/macos && npm run build:whisper:mac",
+    "build:native:mac": "swift build -c release --package-path native/macos",
     "dist:mac": "npm run build:native:mac && electron-builder --mac",
     "dist:win": "electron-builder --win",
     "mcp": "node mcp/server.js",
@@ -58,6 +58,10 @@
         {
           "from": "native/rust/whisper-core/target/release/oli-whisper",
           "to": "native/oli-whisper"
+        },
+        {
+          "from": "native/macos/.build/release/OliHUD",
+          "to": "native/OliHUD"
         }
       ]
     },
