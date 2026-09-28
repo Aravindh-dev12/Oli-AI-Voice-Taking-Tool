@@ -1,6 +1,12 @@
+import { createTrackCapture } from './audio-capture.js';
+
 const $ = (s) => document.querySelector(s);
 const app = $('#app');
-const api = (p, o = {}) => fetch('/api' + p, { headers: { 'Content-Type': 'application/json' }, ...o }).then((r) => r.json());
+const api = (p, o = {}) => fetch('/api' + p, { headers: { 'Content-Type': 'application/json' }, ...o }).then(async (r) => {
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error || 'Request failed (' + r.status + ')');
+  return body;
+});
 
 let pinned = false;
 let flareTimer = null;
@@ -20,21 +26,28 @@ function goPill() {
   clearTimeout(flareTimer);
   setState('pill');
 }
+
 function goShelf() {
   clearTimeout(flareTimer);
   setState('shelf');
 }
+
 function goFlare(tip, source, trigger) {
   $('#flareTip').textContent = tip;
-  $('#flareTip').title = source ? `From your knowledge base: ${source}` : `No knowledge-base match. Prompted by: ${trigger.slice(0, 80)}`;
+  $('#flareTip').title = source
+    ? 'From your knowledge base: ' + source
+    : 'Prompted by: ' + String(trigger || '').slice(0, 80);
   setState('flare');
   clearTimeout(flareTimer);
   flareTimer = setTimeout(goPill, 5000);
 }
 
-// Hover expands to the command shelf; leaving collapses it again unless pinned (Alt+Space).
-app.addEventListener('mouseenter', () => { if (app.dataset.state !== 'shelf') goShelf(); });
-app.addEventListener('mouseleave', () => { if (!pinned) goPill(); });
+app.addEventListener('mouseenter', () => {
+  if (app.dataset.state !== 'shelf') goShelf();
+});
+app.addEventListener('mouseleave', () => {
+  if (!pinned) goPill();
+});
 
 window.oli?.onTogglePin(() => {
   pinned = !pinned;
@@ -42,133 +55,167 @@ window.oli?.onTogglePin(() => {
 });
 window.oli?.onTrayToggleMeeting(() => (meetingId ? endMeeting() : startMeeting()));
 
-$('.view-pill').addEventListener('click', () => { if (!meetingId) startMeeting(); });
+$('.view-pill').addEventListener('click', () => {
+  if (!meetingId) startMeeting();
+});
 $('#btnDash').addEventListener('click', () => window.oli?.openDashboard());
 $('#btnToggle').addEventListener('click', () => (meetingId ? endMeeting() : startMeeting()));
-
-// ---- WAV encoding for raw PCM chunks ----
-function wav(float32) {
-  const buf = new ArrayBuffer(44 + float32.length * 2);
-  const v = new DataView(buf);
-  const str = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
-  str(0, 'RIFF'); v.setUint32(4, 36 + float32.length * 2, true); str(8, 'WAVEfmt ');
-  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
-  v.setUint32(24, 16000, true); v.setUint32(28, 32000, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
-  str(36, 'data'); v.setUint32(40, float32.length * 2, true);
-  float32.forEach((s, i) => v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, s)) * 0x7fff, true));
-  return buf;
-}
-
-function captureTrack(stream, src) {
-  const ctx = new AudioContext({ sampleRate: 16000 });
-  const node = ctx.createScriptProcessor(4096, 1, 1);
-  let buf = [], n = 0;
-  const flush = () => {
-    if (!n) return;
-    const pcm = new Float32Array(n);
-    let o = 0; buf.forEach((b) => { pcm.set(b, o); o += b.length; });
-    buf = []; n = 0;
-    const rms = Math.sqrt(pcm.reduce((a, x) => a + x * x, 0) / pcm.length);
-    if (rms < 0.008) return; // skip near-silence, saves API calls
-    fetch(`/api/meetings/${meetingId}/chunk?src=${src}`, { method: 'POST', headers: { 'Content-Type': 'audio/wav' }, body: wav(pcm) }).catch(() => {});
-  };
-  node.onaudioprocess = (e) => {
-    const d = new Float32Array(e.inputBuffer.getChannelData(0));
-    buf.push(d); n += d.length;
-    if (n >= 96000) flush(); // ~6s chunks
-  };
-  ctx.createMediaStreamSource(stream).connect(node);
-  node.connect(ctx.destination);
-  return () => { flush(); ctx.close(); stream.getTracks().forEach((t) => t.stop()); };
-}
 
 function addSegment(s) {
   $('#transcriptEmpty')?.remove();
   const row = document.createElement('div');
   row.className = 'seg ' + s.speaker;
-  const b = document.createElement('b'); b.textContent = s.speaker;
+  const b = document.createElement('b');
+  b.textContent = s.speaker;
   row.append(b, document.createTextNode(s.text));
-  const col = $('#transcript'); col.append(row); col.scrollTop = col.scrollHeight;
+  const col = $('#transcript');
+  col.append(row);
+  col.scrollTop = col.scrollHeight;
 
-  words[s.speaker] += s.text.split(/\s+/).length;
+  words[s.speaker] = (words[s.speaker] || 0) + s.text.split(/\s+/).filter(Boolean).length;
   const total = words.You + words.Them;
   const pct = total ? Math.round((words.You / total) * 100) : 0;
   $('#meter i').style.width = pct + '%';
   $('#airFill').style.width = pct + '%';
-  $('#airLine').textContent = `You ${pct}% · Them ${100 - pct}%`;
-  $('#nudge').textContent = total > 60 && pct > 65 ? 'You are doing most of the talking. Ask an open-ended question.' : '';
+  $('#airLine').textContent = 'You ' + pct + '% · Them ' + (100 - pct) + '%';
+  $('#nudge').textContent = total > 60 && pct > 65
+    ? 'You are doing most of the talking. Ask an open-ended question.'
+    : '';
 }
 
 function addWhisper(w) {
   const d = document.createElement('div');
   d.className = 'whisper';
-  d.innerHTML = `${escapeHtml(w.tip)}<small>${w.source ? 'From: ' + escapeHtml(w.source) : 'No knowledge-base match'}</small>`;
+  const tip = document.createElement('span');
+  tip.textContent = w.tip;
+  const source = document.createElement('small');
+  source.textContent = w.source ? 'From: ' + w.source : 'No knowledge-base match';
+  d.append(tip, source);
   $('#whispers').prepend(d);
   if (app.dataset.state !== 'shelf') goFlare(w.tip, w.source, w.trigger);
 }
+
 function addAction(a) {
-  commitments++;
-  $('#pillCount').textContent = commitments ? `⧗ ${commitments}` : '';
-  $('#footer').textContent = `Commitment noted: ${a.task}`;
+  commitments += 1;
+  $('#pillCount').textContent = '⧗ ' + commitments;
+  $('#footer').textContent = 'Commitment noted: ' + a.task;
 }
-function escapeHtml(s) { return s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+function setMeetingUi(active) {
+  $('#btnToggle').textContent = active ? 'End' : 'Start';
+  $('#btnToggle').classList.toggle('ending', active);
+  $('#statusRing').classList.toggle('off', !active);
+  $('#shelfTitle').textContent = active ? 'Live meeting' : 'No meeting running';
+  window.oli?.reportMeetingState(active);
+}
 
 async function startMeeting() {
+  if (meetingId) return;
+  let mic;
+  let disp;
   try {
-    const mic = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-    const disp = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+    mic = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true, channelCount: 1 }
+    });
+    disp = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+
     if (!disp.getAudioTracks().length) {
-      disp.getTracks().forEach((t) => t.stop()); mic.getTracks().forEach((t) => t.stop());
-      $('#footer').textContent = 'No audio was shared — pick "Share tab audio" or "Share system audio" and try again.';
-      return;
+      throw new Error('No shared audio was selected. Choose tab audio or system audio.');
     }
-    const r = await api('/meetings', { method: 'POST', body: JSON.stringify({ title: 'Meeting ' + new Date().toLocaleString() }) });
-    meetingId = r.id;
-    words = { You: 0, Them: 0 }; commitments = 0;
-    $('#transcript').replaceChildren(); $('#whispers').replaceChildren();
-    $('#shelfTitle').textContent = 'Live meeting';
-    $('#btnToggle').textContent = 'End'; $('#btnToggle').classList.add('ending');
-    $('#statusRing').classList.remove('off');
-    $('#footer').textContent = 'Listening. Battlecard whispers will appear here when a trigger phrase is heard.';
-    window.oli?.reportMeetingState(true);
 
-    es = new EventSource(`/api/meetings/${meetingId}/stream`);
-    es.addEventListener('segment', (e) => addSegment(JSON.parse(e.data)));
-    es.addEventListener('whisper', (e) => addWhisper(JSON.parse(e.data)));
-    es.addEventListener('action', (e) => addAction(JSON.parse(e.data)));
-    es.addEventListener('error', (e) => { try { $('#footer').textContent = JSON.parse(e.data).message; } catch {} });
+    const { id } = await api('/meetings', {
+      method: 'POST',
+      body: JSON.stringify({ title: 'Meeting ' + new Date().toLocaleString() })
+    });
+    meetingId = id;
+    words = { You: 0, Them: 0 };
+    commitments = 0;
+    $('#transcript').replaceChildren();
+    $('#whispers').replaceChildren();
+    $('#pillCount').textContent = '';
+    $('#footer').textContent = 'Listening. Capture is separated into You and Them channels.';
+    setMeetingUi(true);
 
+    es = new EventSource('/api/meetings/' + encodeURIComponent(meetingId) + '/stream');
+    es.addEventListener('segment', (event) => addSegment(JSON.parse(event.data)));
+    es.addEventListener('whisper', (event) => addWhisper(JSON.parse(event.data)));
+    es.addEventListener('action', (event) => addAction(JSON.parse(event.data)));
+    es.addEventListener('error', (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        $('#footer').textContent = payload.message || 'Live processing error.';
+      } catch {
+        $('#footer').textContent = 'Live stream disconnected; Oli will reconnect automatically.';
+      }
+    });
+
+    const id = meetingId;
     stopFns = [
-      captureTrack(mic, 'me'),
-      captureTrack(new MediaStream(disp.getAudioTracks()), 'them'),
-      () => disp.getVideoTracks().forEach((t) => t.stop())
+      createTrackCapture({
+        stream: mic,
+        source: 'me',
+        meetingId: id,
+        onStatus: (message) => { $('#footer').textContent = message; }
+      }),
+      createTrackCapture({
+        stream: new MediaStream(disp.getAudioTracks()),
+        source: 'them',
+        meetingId: id,
+        onStatus: (message) => { $('#footer').textContent = message; }
+      }),
+      async () => {
+        disp.getTracks().forEach((track) => track.stop());
+      }
     ];
-    disp.getVideoTracks()[0].onended = endMeeting;
-    pinned = true; goShelf();
-  } catch (e) {
-    $('#footer').textContent = 'Could not start: ' + e.message;
+
+    const videoTrack = disp.getVideoTracks()[0];
+    if (videoTrack) videoTrack.addEventListener('ended', () => endMeeting(), { once: true });
+    pinned = true;
+    goShelf();
+  } catch (error) {
+    mic?.getTracks().forEach((track) => track.stop());
+    disp?.getTracks().forEach((track) => track.stop());
+    es?.close();
+    es = null;
+    meetingId = null;
+    setMeetingUi(false);
+    $('#footer').textContent = 'Could not start: ' + error.message;
   }
 }
 
 async function endMeeting() {
   if (!meetingId) return;
-  const id = meetingId; meetingId = null;
-  stopFns.forEach((f) => f()); stopFns = [];
-  es?.close(); es = null;
-  $('#btnToggle').textContent = 'Start'; $('#btnToggle').classList.remove('ending');
-  $('#shelfTitle').textContent = 'Summarizing…';
-  window.oli?.reportMeetingState(false);
-  const r = await api(`/meetings/${id}/end`, { method: 'POST' });
-  $('#shelfTitle').textContent = 'No meeting running';
-  $('#footer').textContent = r.summary?.slice(0, 140) || 'Meeting saved.';
+  const id = meetingId;
+  meetingId = null;
+  $('#shelfTitle').textContent = 'Stopping capture…';
+  try {
+    await Promise.allSettled(stopFns.map((fn) => fn()));
+  } finally {
+    stopFns = [];
+    es?.close();
+    es = null;
+    setMeetingUi(false);
+  }
+
+  try {
+    const r = await api('/meetings/' + encodeURIComponent(id) + '/end', { method: 'POST' });
+    $('#footer').textContent = r.summary?.slice(0, 180) || 'Meeting saved.';
+  } catch (error) {
+    $('#footer').textContent = 'Meeting saved, but summary generation failed: ' + error.message;
+  }
   pinned = false;
+  setState('pill');
 }
 
 (async function init() {
   try {
     const h = await api('/health');
-    $('#statusRing').classList.toggle('off', !h.gemini);
-    if (!h.gemini) $('#pillLabel').textContent = 'OLI · NO KEY';
-    if (!h.gemini) $('#footer').textContent = 'Add a Gemini API key in the Dashboard → Settings before starting a meeting.';
-  } catch {}
+    $('#statusRing').classList.toggle('off', !h.aiReady);
+    if (!h.aiReady) {
+      $('#pillLabel').textContent = 'OLI · LOCAL AI NOT READY';
+      $('#footer').textContent = 'Configure a local AI engine or development provider in Dashboard → Settings.';
+    }
+  } catch {
+    $('#footer').textContent = 'Oli server is not ready yet.';
+  }
 })();

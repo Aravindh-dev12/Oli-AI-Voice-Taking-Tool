@@ -8,22 +8,18 @@
 </head>
 <body>
   <div id="app" data-state="pill" data-active="false">
-
-    <!-- PILL: default resting state, docked at the top of the screen -->
     <section class="view view-pill">
-      <span class="ring" id="statusRing" title="Gemini key status"></span>
+      <span class="ring" id="statusRing" title="Oli status"></span>
       <span class="meter" id="meter" aria-hidden="true"><i></i></span>
       <span class="label" id="pillLabel">OLI</span>
       <span class="count" id="pillCount"></span>
     </section>
 
-    <!-- FLARE: one-line in-call whisper, auto-dismisses -->
     <section class="view view-flare">
       <span class="mark">▲</span>
       <span class="tip" id="flareTip"></span>
     </section>
 
-    <!-- SHELF: hover / Alt+Space drop-down -->
     <section class="view view-shelf">
       <header>
         <span class="eyebrow">OLI</span>
@@ -47,8 +43,7 @@
       </div>
       <footer id="footer">Add battlecards and pricing sheets in the Dashboard's knowledge base so Oli has something to whisper from.</footer>
     </section>
-
   </div>
-  <script src="notch.js"></script>
+  <script type="module" src="notch.js"></script>
 </body>
 </html>

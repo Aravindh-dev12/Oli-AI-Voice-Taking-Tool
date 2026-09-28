@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
 import { openDb } from './db.js';
 import { loadConfig, saveConfig, redact } from './config.js';
+import { parseCaptureSequence, parseCaptureSource, validateWavPayload } from './audio.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
