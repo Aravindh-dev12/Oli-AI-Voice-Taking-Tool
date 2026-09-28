@@ -212,7 +212,7 @@ final class HUDController: NSObject, NSApplicationDelegate, @unchecked Sendable 
         model.onEvent = { [weak self] event in self?.send(event) }
         panel.contentView = NSHostingView(rootView: HUDView(model: model))
         NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.positionPanel()
+            Task { @MainActor in self?.positionPanel() }
         }
         panel.orderFrontRegardless()
 
