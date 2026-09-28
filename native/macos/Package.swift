@@ -6,10 +6,12 @@ let package = Package(
     platforms: [.macOS(.v15)],
     products: [
         .executable(name: "OliNotchGeometry", targets: ["OliNotchGeometry"]),
-        .executable(name: "OliCaptureService", targets: ["OliCaptureService"])
+        .executable(name: "OliCaptureService", targets: ["OliCaptureService"]),
+        .executable(name: "OliHUD", targets: ["OliHUD"])
     ],
     targets: [
         .executableTarget(name: "OliNotchGeometry"),
-        .executableTarget(name: "OliCaptureService")
+        .executableTarget(name: "OliCaptureService"),
+        .executableTarget(name: "OliHUD")
     ]
 )
