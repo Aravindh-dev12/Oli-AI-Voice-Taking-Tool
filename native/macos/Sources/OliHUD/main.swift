@@ -14,6 +14,7 @@ final class HUDModel: ObservableObject, @unchecked Sendable {
     @Published var talkRatio: Double = 0.45
     @Published var commitments: Int = 0
     @Published var meetingActive = false
+    @Published var pinned = false
     @Published var whisper = ""
     @Published var whisperSource = ""
     @Published var transcript: [(speaker: String, text: String)] = []
@@ -49,6 +50,7 @@ final class HUDModel: ObservableObject, @unchecked Sendable {
     }
 
     func toggleShelf() {
+        pinned.toggle()
         setState(state == .shelf ? .ambient : .shelf)
     }
 
@@ -73,7 +75,7 @@ struct HUDView: View {
 
             switch model.state {
             case .ambient:
-                ambient
+                ambient.onTapGesture { model.action(model.meetingActive ? "toggleMeeting" : "startMeeting") }
             case .flare:
                 flare
             case .shelf:
@@ -84,13 +86,9 @@ struct HUDView: View {
         .animation(.spring(response: 0.30, dampingFraction: 0.82), value: model.state)
         .onHover { hovering in
             if hovering && model.state == .ambient { model.setState(.shelf) }
-            if !hovering && model.state == .shelf { model.setState(.ambient) }
+            if !hovering && model.state == .shelf && !model.pinned { model.setState(.ambient) }
         }
-        .onTapGesture {
-            if model.state == .ambient {
-                model.action(model.meetingActive ? "toggleMeeting" : "startMeeting")
-            }
-        }
+
     }
 
     private var width: CGFloat { model.state == .ambient ? 236 : model.state == .flare ? 480 : 620 }
@@ -213,6 +211,9 @@ final class HUDController: NSObject, NSApplicationDelegate, @unchecked Sendable 
         model.onStateChange = { [weak self] _ in self?.positionPanel() }
         model.onEvent = { [weak self] event in self?.send(event) }
         panel.contentView = NSHostingView(rootView: HUDView(model: model))
+        NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.positionPanel()
+        }
         panel.orderFrontRegardless()
 
         stdinTask = Task.detached(priority: .userInitiated) { [weak self] in
