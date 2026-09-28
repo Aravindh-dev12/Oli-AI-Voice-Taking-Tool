@@ -4,12 +4,22 @@ function sanitize(value) {
     .slice(0, 2000);
 }
 
+function sanitizeFields(fields) {
+  const output = {};
+  for (const [key, value] of Object.entries(fields || {})) {
+    if (typeof value === 'string') output[key] = sanitize(value);
+    else if (typeof value === 'number' || typeof value === 'boolean' || value == null) output[key] = value;
+    else output[key] = '[REDACTED_OBJECT]';
+  }
+  return output;
+}
+
 function write(level, message, fields = {}) {
   const payload = {
     ts: new Date().toISOString(),
     level,
     message: sanitize(message),
-    ...fields
+    ...sanitizeFields(fields)
   };
   process.stderr.write(JSON.stringify(payload) + '\n');
 }
