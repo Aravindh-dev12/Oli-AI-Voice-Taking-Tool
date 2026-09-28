@@ -7,13 +7,14 @@ import { fileURLToPath } from 'node:url';
 import { createServer } from '../server/index.js';
 import { createLogger } from '../server/logger.js';
 import { createNativeCaptureManager } from './native-capture.js';
+import { createNativeCaptureManager } from './native-capture.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4173);
 const DB_PATH = path.resolve(app.getPath('userData'), process.env.DB_PATH || 'data/oli.db');
 const CONFIG_PATH = path.resolve(app.getPath('userData'), process.env.CONFIG_PATH || 'data/config.json');
 
-let notchWin, dashboardWin, tray, serverInstance, httpServer;
+let notchWin, dashboardWin, tray, serverInstance, httpServer, nativeCapture;
 let meetingActive = false;
 let nativeCapture;
 
@@ -175,6 +176,15 @@ ipcMain.on('oli:meeting-state', (_e, active) => {
   refreshTrayMenu();
 });
 ipcMain.handle('oli:platform', () => process.platform);
+ipcMain.handle('oli:native-capture-available', () => nativeCapture?.available() ?? false);
+ipcMain.handle('oli:native-capture-start', async (_event, meetingId) => {
+  if (process.platform !== 'darwin') return { active: false, reason: 'unsupported-platform' };
+  return nativeCapture.start(String(meetingId));
+});
+ipcMain.handle('oli:native-capture-stop', async () => {
+  await nativeCapture?.stop();
+  return { active: false };
+});
 ipcMain.handle('oli:native-capture-available', () => nativeCapture?.available() ?? false);
 ipcMain.handle('oli:native-capture-start', async (_event, meetingId) => {
   if (process.platform !== 'darwin') return { active: false, reason: 'unsupported-platform' };
