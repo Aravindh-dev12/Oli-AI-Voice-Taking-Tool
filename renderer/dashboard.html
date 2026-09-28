@@ -47,13 +47,33 @@
   <div class="row"><label>Provider</label><select id="aiProvider"><option value="auto">Auto</option><option value="local">Local</option><option value="gemini">Gemini</option><option value="nvidia">NVIDIA</option></select></div>
   <div class="row"><label>Timeout (ms)</label><input id="aiTimeoutMs" type="number" min="1000" max="120000" step="1000"/></div>
 
-  <h3>Local transcription</h3>
+  <h3>Native Whisper / whisper.cpp</h3>
+  <p class="hint">Native transcription is preferred in sovereign mode. The GGML model stays on disk; on Apple Silicon, the optional Core ML encoder sits beside it for ANE acceleration.</p>
+  <div class="row"><label>Binary</label><input id="whisperBinaryPath" placeholder="Auto-detect packaged oli-whisper"/></div>
+  <div class="row"><label>Model</label><input id="whisperModelPath" placeholder="/absolute/path/to/ggml-base.en-q5_0.bin"/></div>
+  <div class="row"><label>Language</label><input id="whisperLanguage" placeholder="en"/></div>
+  <div class="row"><label>Threads</label><input id="whisperThreads" type="number" min="1" max="64"/></div>
+
+  <h3>Local HTTP transcription fallback</h3>
   <div class="row"><label>Endpoint</label><input id="localTranscriptionUrl" placeholder="http://127.0.0.1:8000/v1/audio/transcriptions"/></div>
   <div class="row"><label>Model</label><input id="localTranscriptionModel"/></div>
 
   <h3>Local chat</h3>
   <div class="row"><label>Endpoint</label><input id="localChatUrl" placeholder="http://127.0.0.1:1234/v1/chat/completions"/></div>
   <div class="row"><label>Model</label><input id="localChatModel"/></div>
+
+  <h3>Local knowledge + integrations</h3>
+  <p class="hint">Point Oli at a folder of Markdown files, including exported Notion Markdown. Files stay local and are indexed into the SQLite FTS knowledge base.</p>
+  <div class="row"><label>Knowledge folder</label><input id="knowledgeDir" placeholder="/absolute/path/to/knowledge"/></div>
+  <div class="row"><button id="syncKnowledge" class="primary">Sync Markdown</button><span id="knowledgeMsg" class="hint"></span></div>
+  <div class="row"><label>Obsidian vault</label><input id="obsidianVaultPath" placeholder="/absolute/path/to/Obsidian vault"/></div>
+  <div class="row"><label>Embedding URL</label><input id="localEmbeddingUrl" placeholder="http://127.0.0.1:1234/v1/embeddings"/></div>
+  <div class="row"><label>Embedding model</label><input id="localEmbeddingModel" placeholder="nomic-embed-text"/></div>
+  <div class="row"><label>Embedding dims</label><input id="embeddingDimensions" type="number" min="32" max="4096"/></div>
+  <div class="row"><label>CRM webhook</label><input id="crmWebhookUrl" placeholder="https://crm.example.com/hooks/oli"/></div>
+  <div class="row"><label>CRM token</label><input id="crmWebhookToken" type="password" placeholder="Optional Bearer token"/></div>
+  <div class="row"><label>CRM webhook</label><input id="crmWebhookUrl" placeholder="https://crm.example.com/hooks/oli"/></div>
+  <div class="row"><label>CRM token</label><input id="crmWebhookToken" type="password" placeholder="Optional Bearer token"/></div>
 
   <h3>Gemini — optional development provider</h3>
   <div class="row"><label>API key <span id="gStatus" class="tag"></span></label><input id="gKey" type="password" placeholder="Paste a new key to replace it" /></div>

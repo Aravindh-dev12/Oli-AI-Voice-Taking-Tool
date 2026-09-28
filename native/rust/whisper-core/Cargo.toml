@@ -1,0 +1,19 @@
+[package]
+name = "oli-whisper"
+version = "0.1.0"
+edition = "2021"
+description = "Local Whisper/whisper.cpp transcription core for Oli"
+license = "MIT"
+
+[features]
+default = []
+metal = ["whisper-rs/metal"]
+coreml = ["whisper-rs/coreml"]
+
+[dependencies]
+anyhow = "1.0"
+hound = "3.5"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+base64 = "0.22"
+whisper-rs = { version = "0.16.0", default-features = false }

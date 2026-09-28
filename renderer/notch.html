@@ -11,6 +11,10 @@
     <section class="view view-pill">
       <span class="ring" id="statusRing" title="Oli status"></span>
       <span class="meter" id="meter" aria-hidden="true"><i></i></span>
+      <span class="channels" aria-label="Audio channel status">
+        <span class="channel" id="channelThem"><i></i>SYS</span>
+        <span class="channel" id="channelYou"><i></i>MIC</span>
+      </span>
       <span class="label" id="pillLabel">OLI</span>
       <span class="count" id="pillCount"></span>
     </section>
@@ -35,6 +39,9 @@
         <div class="col intel">
           <h4>In-flight intelligence</h4>
           <div id="whispers" class="whispers"></div>
+          <h4>Agenda</h4>
+          <div id="agenda" class="agenda"></div>
+          <div class="agenda-add"><input id="agendaInput" maxlength="300" placeholder="Add agenda item"/><button id="agendaAdd" class="ghost">+</button></div>
           <h4>Talk time</h4>
           <div class="airbar"><i id="airFill"></i></div>
           <div class="airline" id="airLine">You 0% · Them 0%</div>

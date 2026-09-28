@@ -20,6 +20,7 @@ The server is intentionally stdio-only. Keep it configured as a local process in
 - oli_get_meeting
 - oli_search_knowledge
 - oli_search_transcript
+- oli_get_meddpicc
 - oli_list_commitments
 
 All returned records come directly from the local SQLite store. API keys and model configuration secrets are never returned.
@@ -32,7 +33,7 @@ Example shape for an MCP client:
       "mcpServers": {
         "oli": {
           "command": "node",
-          "args": ["/ABSOLUTE/PATH/TO/Oli-AI-Voice-Taking-Tool/mcp/server.js"],
+          "args": ["/ABSOLUTE/PATH/TO/Oli-Note-Take-Agent/mcp/server.js"],
           "env": { "OLI_DB_PATH": "/ABSOLUTE/PATH/TO/oli.db" }
         }
       }

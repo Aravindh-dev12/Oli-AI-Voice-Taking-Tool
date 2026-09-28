@@ -7,6 +7,10 @@ import { loadConfig, saveConfig, redact } from './config.js';
 import { parseCaptureSequence, parseCaptureSource, validateWavPayload } from './audio.js';
 import { createAiRuntime } from './ai/index.js';
 import { createLogger } from './logger.js';
+import { syncKnowledge, listKnowledgeSources } from './knowledge.js';
+import { syncMeetingToObsidian } from './obsidian.js';
+import { createVectorStore } from './vector.js';
+import { syncMeetingToCrm } from './crm.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -17,6 +21,16 @@ function applyRetentionPolicy(db, retentionDays) {
   if (!retentionDays) return 0;
   const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
   return db.prepare('DELETE FROM meetings WHERE ended_at IS NOT NULL AND ended_at < ?').run(cutoff).changes;
+}
+
+
+function safeMeddpicc(value) {
+  const source = value && typeof value === 'object' ? value : {};
+  const clean = {};
+  for (const key of ['metrics','economic_buyer','decision_criteria','decision_process','paper_process','identify_pain','champion','competition']) {
+    clean[key] = String(source[key] || '').trim().slice(0, 1000);
+  }
+  return clean;
 }
 
 function safeActionItems(value) {
@@ -36,7 +50,17 @@ export function createServer({ dbPath, configPath }) {
   let cfg = loadConfig(configPath);
   let ai = createAiRuntime(cfg);
   const logger = createLogger('server');
+  let vector = createVectorStore(db, {
+    embeddingUrl: cfg.localEmbeddingUrl,
+    embeddingModel: cfg.localEmbeddingModel,
+    dimensions: cfg.embeddingDimensions,
+    timeoutMs: cfg.aiTimeoutMs
+  });
   applyRetentionPolicy(db, cfg.retentionDays);
+  if (cfg.knowledgeDir) {
+    try { syncKnowledge(db, cfg.knowledgeDir); } catch (error) { logger.warn('knowledge sync failed', { reason: error.message }); }
+  }
+  if (vector.enabled && cfg.localEmbeddingUrl) void vector.reindexAll().catch((error) => logger.warn('vector reindex failed', { reason: error.message }));
   const clients = new Map();
 
   const emit = (id, event, data) => {
@@ -57,12 +81,14 @@ export function createServer({ dbPath, configPath }) {
       : null;
 
     try {
+      const semantic = await vector.search(text, 3);
+      const contextEntry = semantic[0] || hit;
       const tip = await ai.copilot(
         'You are a real-time meeting copilot. Reply with one concise bullet under 25 words. Use only verified context when supplied. Otherwise ask one useful discovery question. No filler or preamble.',
-        'Verified context:\n' + (hit ? hit.content.slice(0, 800) : 'none') +
+        'Verified context:\n' + (contextEntry ? contextEntry.content.slice(0, 800) : 'none') +
         '\n\nParticipant said: "' + text.slice(0, 2000) + '"'
       );
-      if (tip) emit(id, 'whisper', { tip, source: hit?.title || null, sourceId: hit?.id || null, trigger: text });
+      if (tip) emit(id, 'whisper', { tip, source: contextEntry?.title || null, sourceId: contextEntry?.id || null, trigger: text });
     } catch (error) {
       emit(id, 'error', { message: 'Whisper unavailable: ' + error.message });
     }
@@ -75,21 +101,37 @@ export function createServer({ dbPath, configPath }) {
 
   app.get('/api/health', (_, res) => {
     const status = ai.status();
-    res.json({ ok: true, aiReady: status.ready, ai: status });
+    res.json({ ok: true, aiReady: status.ready, ai: status, vector: vector.status(), knowledgeSources: listKnowledgeSources(db).length });
   });
 
   app.get('/api/settings', (_, res) => res.json(redact(cfg)));
+
+  app.get('/api/kb/sources', (_, res) => res.json(listKnowledgeSources(db)));
+
+  app.post('/api/kb/sync', async (_, res) => {
+    try {
+      const result = syncKnowledge(db, cfg.knowledgeDir);
+      const vectorResult = vector.enabled && cfg.localEmbeddingUrl ? await vector.reindexAll() : null;
+      res.json({ ...result, vector: vectorResult });
+    } catch (error) {
+      res.status(500).json({ error: 'Knowledge sync failed: ' + error.message });
+    }
+  });
 
   app.get('/api/privacy', (_, res) => {
     const meetingCount = db.prepare('SELECT COUNT(*) AS count FROM meetings').get().count;
     const transcriptCount = db.prepare('SELECT COUNT(*) AS count FROM segments').get().count;
     const kbCount = db.prepare('SELECT COUNT(*) AS count FROM kb').get().count;
-    res.json({ retentionDays: cfg.retentionDays, localOnly: cfg.aiProvider === 'local', meetingCount, transcriptCount, kbCount });
+    const status = ai.status();
+    const localOnly = status.active === 'local-native' || status.active === 'local-http';
+    res.json({ retentionDays: cfg.retentionDays, localOnly, activeProvider: status.active, meetingCount, transcriptCount, kbCount });
   });
 
   app.post('/api/privacy', (req, res) => {
     cfg = saveConfig(configPath, { ...cfg, retentionDays: req.body.retentionDays });
+    const previousAi = ai;
     ai = createAiRuntime(cfg);
+    previousAi.close();
     const deleted = applyRetentionPolicy(db, cfg.retentionDays);
     res.json({ retentionDays: cfg.retentionDays, deleted });
   });
@@ -101,7 +143,25 @@ export function createServer({ dbPath, configPath }) {
 
   app.post('/api/settings', (req, res) => {
     cfg = saveConfig(configPath, { ...cfg, ...req.body });
+    const previousAi = ai;
     ai = createAiRuntime(cfg);
+    previousAi.close();
+    vector = createVectorStore(db, {
+      embeddingUrl: cfg.localEmbeddingUrl,
+      embeddingModel: cfg.localEmbeddingModel,
+      dimensions: cfg.embeddingDimensions,
+      timeoutMs: cfg.aiTimeoutMs
+    });
+    vector = createVectorStore(db, {
+      embeddingUrl: cfg.localEmbeddingUrl,
+      embeddingModel: cfg.localEmbeddingModel,
+      dimensions: cfg.embeddingDimensions,
+      timeoutMs: cfg.aiTimeoutMs
+    });
+    if (cfg.knowledgeDir) {
+      try { syncKnowledge(db, cfg.knowledgeDir); } catch (error) { logger.warn('knowledge sync failed', { reason: error.message }); }
+    }
+    if (vector.enabled && cfg.localEmbeddingUrl) void vector.reindexAll().catch((error) => logger.warn('vector reindex failed', { reason: error.message }));
     res.json(redact(cfg));
   });
 
@@ -131,7 +191,9 @@ export function createServer({ dbPath, configPath }) {
     res.json({
       meeting,
       segments: q('SELECT speaker, text, ts FROM segments WHERE meeting_id=? ORDER BY ts').all(req.params.id),
-      actions: q('SELECT task, assignee, status FROM actions WHERE meeting_id=? ORDER BY id').all(req.params.id)
+      actions: q('SELECT id, task, assignee, status FROM actions WHERE meeting_id=? ORDER BY id').all(req.params.id),
+      agenda: q('SELECT id, item, checked, position FROM agenda_items WHERE meeting_id=? ORDER BY position, id').all(req.params.id),
+      meddpicc: q('SELECT metrics, economic_buyer, decision_criteria, decision_process, paper_process, identify_pain, champion, competition, updated_at FROM meeting_intelligence WHERE meeting_id=?').get(req.params.id) || null
     });
   });
 
@@ -145,7 +207,7 @@ export function createServer({ dbPath, configPath }) {
       segments,
       actions,
       exported_at: Date.now(),
-      privacy: { local_only: cfg.aiProvider === 'local' }
+      privacy: { local_only: ai.status().active === 'local-native' || ai.status().active === 'local-http', active_provider: ai.status().active }
     };
     res.setHeader('Content-Disposition', 'attachment; filename="oli-meeting-' + req.params.id + '.json"');
     res.json(document);
@@ -253,6 +315,18 @@ export function createServer({ dbPath, configPath }) {
         const result = await ai.summarize(segments);
         summary = String(result.summary || summary).trim().slice(0, 4000);
         items = safeActionItems(result.action_items);
+        const meddpicc = safeMeddpicc(result.meddpicc);
+        q(`INSERT INTO meeting_intelligence(
+          meeting_id, metrics, economic_buyer, decision_criteria, decision_process,
+          paper_process, identify_pain, champion, competition, updated_at
+        ) VALUES(?,?,?,?,?,?,?,?,?,?)
+        ON CONFLICT(meeting_id) DO UPDATE SET
+          metrics=excluded.metrics, economic_buyer=excluded.economic_buyer,
+          decision_criteria=excluded.decision_criteria, decision_process=excluded.decision_process,
+          paper_process=excluded.paper_process, identify_pain=excluded.identify_pain,
+          champion=excluded.champion, competition=excluded.competition, updated_at=excluded.updated_at`)
+          .run(id, meddpicc.metrics, meddpicc.economic_buyer, meddpicc.decision_criteria, meddpicc.decision_process,
+            meddpicc.paper_process, meddpicc.identify_pain, meddpicc.champion, meddpicc.competition, Date.now());
       } catch (error) {
         summary = 'Summary unavailable: ' + error.message;
       }
@@ -265,8 +339,71 @@ export function createServer({ dbPath, configPath }) {
     });
     tx();
     logger.info('meeting ended', { meetingId: id, segments: segments.length, actions: items.length });
+    let obsidianPath = null;
+    let crmSynced = false;
+    if (cfg.obsidianVaultPath) {
+      try {
+        obsidianPath = syncMeetingToObsidian(db, id, cfg.obsidianVaultPath);
+      } catch (error) {
+        logger.warn('Obsidian sync failed', { meetingId: id, reason: error.message });
+      }
+    }
+    if (cfg.crmWebhookUrl) {
+      try {
+        const meddpicc = q('SELECT metrics, economic_buyer, decision_criteria, decision_process, paper_process, identify_pain, champion, competition FROM meeting_intelligence WHERE meeting_id=?').get(id);
+        const actions = q('SELECT id, task, assignee, status FROM actions WHERE meeting_id=? ORDER BY id').all(id);
+        const meetingForSync = q('SELECT * FROM meetings WHERE id=?').get(id);
+        const crm = await syncMeetingToCrm({
+          meeting: meetingForSync,
+          meddpicc,
+          actions,
+          webhookUrl: cfg.crmWebhookUrl,
+          token: cfg.crmWebhookToken,
+          timeoutMs: cfg.aiTimeoutMs
+        });
+        crmSynced = Boolean(crm.synced);
+      } catch (error) {
+        logger.warn('CRM sync failed', { meetingId: id, reason: error.message });
+      }
+    }
     emit(id, 'meeting-ended', { summary });
-    res.json({ summary, items });
+    res.json({ summary, items, obsidianPath, crmSynced });
+  });
+
+  app.get('/api/meetings/:id/agenda', (req, res) => {
+    if (!meetingExists(req.params.id)) return res.sendStatus(404);
+    res.json(q('SELECT id, item, checked, position FROM agenda_items WHERE meeting_id=? ORDER BY position, id').all(req.params.id));
+  });
+
+  app.post('/api/meetings/:id/agenda', (req, res) => {
+    if (!meetingExists(req.params.id)) return res.sendStatus(404);
+    const item = String(req.body.item || '').trim();
+    if (!item) return res.status(400).json({ error: 'item is required' });
+    const max = q('SELECT COALESCE(MAX(position), -1) AS position FROM agenda_items WHERE meeting_id=?').get(req.params.id).position;
+    const result = q('INSERT INTO agenda_items(meeting_id, item, checked, position) VALUES(?,?,0,?)').run(req.params.id, item.slice(0, 300), Number(max) + 1);
+    res.status(201).json(q('SELECT id, item, checked, position FROM agenda_items WHERE id=?').get(result.lastInsertRowid));
+  });
+
+  app.patch('/api/agenda/:id', (req, res) => {
+    if (req.body.checked == null) return res.status(400).json({ error: 'checked is required' });
+    const result = q('UPDATE agenda_items SET checked=? WHERE id=?').run(req.body.checked ? 1 : 0, req.params.id);
+    if (!result.changes) return res.sendStatus(404);
+    res.json(q('SELECT id, meeting_id, item, checked, position FROM agenda_items WHERE id=?').get(req.params.id));
+  });
+
+  app.delete('/api/agenda/:id', (req, res) => {
+    const result = q('DELETE FROM agenda_items WHERE id=?').run(req.params.id);
+    if (!result.changes) return res.sendStatus(404);
+    res.json({ ok: true });
+  });
+
+  app.patch('/api/actions/:id', (req, res) => {
+    const allowed = new Set(['pending', 'done', 'cancelled']);
+    const status = String(req.body.status || '').toLowerCase();
+    if (!allowed.has(status)) return res.status(400).json({ error: 'status must be pending, done, or cancelled' });
+    const result = q('UPDATE actions SET status=? WHERE id=?').run(status, req.params.id);
+    if (!result.changes) return res.sendStatus(404);
+    res.json(q('SELECT id, meeting_id, task, assignee, status FROM actions WHERE id=?').get(req.params.id));
   });
 
   app.get('/api/kb', (_, res) => res.json(
@@ -284,13 +421,22 @@ export function createServer({ dbPath, configPath }) {
     const title = String(req.body.title || '').trim();
     const content = String(req.body.content || '').trim();
     if (!title || !content) return res.status(400).json({ error: 'title and content are required' });
-    q('INSERT INTO kb(title, content) VALUES(?,?)').run(title.slice(0, 200), content.slice(0, 20000));
-    res.status(201).json({ ok: true });
+    const cleanTitle = title.slice(0, 200);
+    const cleanContent = content.slice(0, 20000);
+    const result = q('INSERT INTO kb(title, content) VALUES(?,?)').run(cleanTitle, cleanContent);
+    if (vector.enabled && cfg.localEmbeddingUrl) {
+      void vector.upsert(Number(result.lastInsertRowid), cleanTitle + '\n' + cleanContent)
+        .catch((error) => logger.warn('vector upsert failed', { reason: error.message }));
+    }
+    res.status(201).json({ ok: true, id: Number(result.lastInsertRowid) });
   });
 
   app.delete('/api/kb/:id', (req, res) => {
     const result = q('DELETE FROM kb WHERE rowid=?').run(req.params.id);
     if (!result.changes) return res.sendStatus(404);
+    if (vector.enabled) {
+      try { q('DELETE FROM kb_vectors WHERE rowid=?').run(BigInt(req.params.id)); } catch {}
+    }
     res.json({ ok: true });
   });
 
@@ -300,6 +446,7 @@ export function createServer({ dbPath, configPath }) {
     close() {
       clients.forEach((connections) => connections.forEach((res) => { try { res.end(); } catch {} }));
       clients.clear();
+      ai.close();
       db.close();
     }
   };

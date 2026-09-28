@@ -17,3 +17,7 @@ SQLite stores meetings, transcript segments, summaries, commitments, and knowled
 ## Screen-share protection
 
 The notch window uses Electron content protection. Treat this as a platform feature, not a confidentiality guarantee: always verify the behavior in the specific meeting/recording client and OS version you deploy to.
+
+## Local integrations
+
+Markdown/Notion-export knowledge is read from the configured local folder only. Obsidian sync writes meeting notes to the configured local vault. Semantic embeddings, when enabled, target the configured localhost embedding endpoint.

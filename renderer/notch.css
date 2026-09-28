@@ -25,7 +25,12 @@ body { -webkit-app-region: no-drag; }
 .ring { width: 6px; height: 6px; border-radius: 50%; background: #fff; flex: none; }
 .ring.off { background: transparent; border: 1px solid #6a6a6a; }
 .meter { flex: none; width: 46px; height: 4px; background: #2c2c2c; border-radius: 2px; overflow: hidden; display: block; }
-.meter i { display: block; height: 100%; width: 0%; background: #fff; transition: width .5s ease; }
+.meter i { display: block; height: 100%; width: 0%; background: linear-gradient(90deg, #39ff88 0%, #d8ff44 65%, #ffb84a 100%); transition: width .35s ease; }
+.channels { display: inline-flex; gap: 5px; align-items: center; }
+.channel { display: inline-flex; align-items: center; gap: 3px; font-size: 8px; letter-spacing: .04em; color: #6f6f6f; }
+.channel i { width: 4px; height: 4px; border-radius: 50%; border: 1px solid #555; display: block; }
+.channel.active { color: #ddd; }
+.channel.active i { background: #fff; border-color: #fff; box-shadow: 0 0 5px rgba(255,255,255,.35); }
 .label { font-size: 11px; letter-spacing: .12em; color: #d8d8d8; }
 .count { margin-left: auto; font-size: 11px; color: #9a9a9a; }
 
@@ -72,3 +77,11 @@ button.ghost.strong.ending { background: transparent; color: #fff; border-color:
 ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+.agenda { display:flex; flex-direction:column; gap:4px; max-height:78px; overflow-y:auto; margin-bottom:5px; }
+.agenda-item { display:flex; align-items:flex-start; gap:5px; font:11px/1.25 system-ui,sans-serif; color:#ddd; }
+.agenda-item input { width:12px; height:12px; flex:none; margin:1px 0 0; accent-color:#fff; }
+.agenda-item.checked span { color:#666; text-decoration:line-through; }
+.agenda-add { display:flex; gap:5px; margin-bottom:7px; }
+.agenda-add input { min-width:0; flex:1; border:1px solid #2d2d2d; border-radius:5px; padding:4px 6px; background:#0c0c0c; color:#fff; font:10px system-ui,sans-serif; }
+.agenda-add button { min-width:24px; padding:3px 7px; font-size:13px; }
