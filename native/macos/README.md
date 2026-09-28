@@ -3,9 +3,9 @@
 Oli uses two small native macOS executables:
 
 - `OliNotchGeometry` — reads the screen's top safe-area geometry for physical-notch positioning.
-- `OliCaptureService` — uses ScreenCaptureKit to capture **system audio** and **microphone** as separate stream outputs and emits 16 kHz mono WAV chunks as JSON lines on stdout.
+- `OliCaptureService` — uses ScreenCaptureKit to capture system audio and microphone as separate stream outputs and emits 16 kHz mono WAV chunks as JSON lines on stdout.
 
-Apple documents `NSScreen.auxiliaryTopLeftArea` / `auxiliaryTopRightArea` as the safe areas around a camera housing, and ScreenCaptureKit exposes `.audio` and `.microphone` outputs on supported macOS releases. citeturn345070search2turn345070search4turn121473search0
+Apple documents the auxiliary top-left/top-right screen areas around a camera housing, and ScreenCaptureKit exposes separate audio and microphone stream outputs on supported macOS releases.
 
 ## Build
 
@@ -32,4 +32,4 @@ When the native helper is unavailable or cannot start, the renderer continues to
 
 ## Screen-share privacy
 
-Electron still enables `setContentProtection(true)` on the overlay, but current Electron and Apple documentation note an important macOS limitation: newer apps using ScreenCaptureKit can still capture protected windows. Treat content protection as a best-effort OS feature and verify the exact conferencing client/OS combination before relying on it as a confidentiality guarantee. citeturn417108search0turn345070search0
+Electron still enables `setContentProtection(true)` on the overlay. Current Electron documentation notes that on newer macOS applications using ScreenCaptureKit, protected windows may still be captured. Treat content protection as a best-effort OS feature and verify the exact conferencing client/OS combination before relying on it as a confidentiality guarantee.
