@@ -1,0 +1,40 @@
+{
+  "name": "oli",
+  "productName": "Oli",
+  "version": "1.0.0",
+  "description": "Sovereign AI meeting copilot that lives in a notch-style overlay on Mac and Windows.",
+  "main": "electron/main.js",
+  "type": "module",
+  "scripts": {
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "electron": "^32.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "dev.oli.copilot",
+    "files": ["electron/**", "server/**", "renderer/**", "assets/**", "package.json"],
+    "extraResources": [{ "from": "data", "to": "data" }],
+    "mac": {
+      "target": "dmg",
+      "icon": "assets/icon.png",
+      "category": "public.app-category.productivity",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Oli listens to your microphone to transcribe your side of the conversation.",
+        "NSScreenCaptureUsageDescription": "Oli captures shared meeting-tab or system audio so it can transcribe the other participants. No video or screen image is recorded."
+      }
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.png"
+    }
+  }
+}
