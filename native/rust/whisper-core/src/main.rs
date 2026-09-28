@@ -64,12 +64,12 @@ fn load_audio_bytes(bytes: &[u8]) -> Result<Vec<f32>> {
     Ok(audio)
 }
 
-struct Engine {
+struct WhisperEngine {
     context: WhisperContext,
     model_path: String,
 }
 
-impl Engine {
+impl WhisperEngine {
     fn new(model_path: &str) -> Result<Self> {
         if !Path::new(model_path).is_file() {
             return Err(anyhow!(
@@ -237,7 +237,7 @@ fn run_stdio(engine: &Engine, default_language: Option<&str>, default_threads: i
 
 fn main() -> Result<()> {
     let (model, audio, language, threads) = parse_args()?;
-    let engine = Engine::new(&model)?;
+    let engine = WhisperEngine::new(&model)?;
 
     if audio.is_some() {
         let result = engine.transcribe(audio.as_deref().unwrap(), language.as_deref(), threads)?;
