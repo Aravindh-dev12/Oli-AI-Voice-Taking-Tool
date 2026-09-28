@@ -14,6 +14,7 @@ export function createNativeCaptureManager({ port, onError = () => {} }) {
   let child = null;
   let buffer = '';
   let stopping = false;
+  let pendingPosts = new Set();
 
   const emitError = (message) => {
     try { onError(String(message)); } catch {}
@@ -57,7 +58,9 @@ export function createNativeCaptureManager({ port, onError = () => {} }) {
     }
 
     if (event.type === 'audio') {
-      void postChunk(meetingId, event);
+      const pending = postChunk(meetingId, event);
+      pendingPosts.add(pending);
+      pending.finally(() => pendingPosts.delete(pending));
       return null;
     }
     if (event.type === 'error') {
@@ -158,6 +161,7 @@ export function createNativeCaptureManager({ port, onError = () => {} }) {
       });
     });
     child = null;
+    await Promise.allSettled([...pendingPosts]);
   }
 
   return {
