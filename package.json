@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "start": "electron .",
-    "check": "node --check electron/main.js && node --check electron/preload.js && node --check server/index.js",
+    "check": "node --check electron/main.js && node --check electron/preload.js && node --check server/index.js && node --check server/audio.js && node --check server/logger.js && node --check server/rag.js && node --check server/ai/index.js && node --check server/ai/utils.js && node --check server/ai/gemini.js && node --check server/ai/local.js && node --check server/ai/nvidia.js && node --check renderer/audio-capture.js && node --check mcp/server.js",
     "test": "node --test",
     "build:native:mac": "swift build -c release --package-path native/macos",
     "dist:mac": "npm run build:native:mac && electron-builder --mac",
@@ -32,15 +32,6 @@
       "assets/**",
       "package.json"
     ],
-    "extraResources": [
-      {
-        "from": "native/macos/.build/release/OliNotchGeometry",
-        "to": "native/OliNotchGeometry",
-        "filter": [
-          "**/*"
-        ]
-      }
-    ],
     "mac": {
       "target": "dmg",
       "icon": "assets/icon.png",
@@ -48,11 +39,20 @@
       "extendInfo": {
         "NSMicrophoneUsageDescription": "Oli uses your microphone to transcribe your side of the conversation.",
         "NSScreenCaptureUsageDescription": "Oli uses screen capture only to receive shared meeting-tab/system audio. Video frames are not stored."
-      }
+      },
+      "extraResources": [
+        {
+          "from": "native/macos/.build/release/OliNotchGeometry",
+          "to": "native/OliNotchGeometry"
+        }
+      ]
     },
     "win": {
       "target": "nsis",
       "icon": "assets/icon.png"
     }
+  },
+  "engines": {
+    "node": ">=22"
   }
 }
