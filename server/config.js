@@ -12,7 +12,8 @@ function defaults() {
     localTranscriptionUrl: process.env.OLI_LOCAL_TRANSCRIPTION_URL || '',
     localChatModel: process.env.OLI_LOCAL_CHAT_MODEL || 'llama-3.2-3b',
     localTranscriptionModel: process.env.OLI_LOCAL_TRANSCRIPTION_MODEL || 'whisper-large-v3-turbo',
-    aiTimeoutMs: Number(process.env.OLI_AI_TIMEOUT_MS || 15000)
+    aiTimeoutMs: Number(process.env.OLI_AI_TIMEOUT_MS || 15000),
+    retentionDays: Number(process.env.OLI_RETENTION_DAYS || 0)
   };
 }
 
@@ -37,9 +38,11 @@ export function saveConfig(configPath, cfg) {
     localTranscriptionUrl: String(cfg.localTranscriptionUrl || ''),
     localChatModel: String(cfg.localChatModel || 'llama-3.2-3b'),
     localTranscriptionModel: String(cfg.localTranscriptionModel || 'whisper-large-v3-turbo'),
-    aiTimeoutMs: Math.min(Math.max(Number(cfg.aiTimeoutMs) || 15000, 1000), 120000)
+    aiTimeoutMs: Math.min(Math.max(Number(cfg.aiTimeoutMs) || 15000, 1000), 120000),
+    retentionDays: Math.min(Math.max(Number(cfg.retentionDays) || 0, 0), 3650)
   };
-  fs.writeFileSync(configPath, JSON.stringify(clean, null, 2));
+  fs.writeFileSync(configPath, JSON.stringify(clean, null, 2), { mode: 0o600 });
+  try { fs.chmodSync(configPath, 0o600); } catch {}
   return clean;
 }
 
@@ -57,6 +60,7 @@ export function redact(cfg) {
     localTranscriptionUrl: cfg.localTranscriptionUrl,
     localChatModel: cfg.localChatModel,
     localTranscriptionModel: cfg.localTranscriptionModel,
-    aiTimeoutMs: cfg.aiTimeoutMs
+    aiTimeoutMs: cfg.aiTimeoutMs,
+    retentionDays: cfg.retentionDays
   };
 }
