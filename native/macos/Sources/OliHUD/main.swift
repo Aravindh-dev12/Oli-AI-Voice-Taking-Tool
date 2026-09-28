@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 import Foundation
 
-private enum HUDState: String, Codable, Sendable {
+enum HUDState: String, Codable, Sendable {
     case ambient
     case flare
     case shelf
