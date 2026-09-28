@@ -44,6 +44,10 @@
         {
           "from": "native/macos/.build/release/OliNotchGeometry",
           "to": "native/OliNotchGeometry"
+        },
+        {
+          "from": "native/macos/.build/release/OliCaptureService",
+          "to": "native/OliCaptureService"
         }
       ]
     },
