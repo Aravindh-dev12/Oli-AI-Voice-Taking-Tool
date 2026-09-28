@@ -196,7 +196,7 @@ fn parse_args() -> Result<(String, Option<String>, Option<String>, i32)> {
     ))
 }
 
-fn run_stdio(engine: &Engine, default_language: Option<&str>, default_threads: i32) -> Result<()> {
+fn run_stdio(engine: &WhisperEngine, default_language: Option<&str>, default_threads: i32) -> Result<()> {
     let stdin = io::stdin();
     let mut stdout = io::BufWriter::new(io::stdout().lock());
 
