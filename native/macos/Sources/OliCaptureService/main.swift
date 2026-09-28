@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import CoreGraphics
 import CoreMedia
@@ -303,9 +304,6 @@ final class CaptureService: NSObject, SCStreamOutput, SCStreamDelegate {
 }
 
 let service = CaptureService()
-let group = DispatchGroup()
-group.enter()
-
 Task {
     do {
         try await service.start()
@@ -313,7 +311,6 @@ Task {
         Output().send(Event(type: "error", source: nil, seq: nil, wav: nil, sampleRate: nil, channels: nil, message: error.localizedDescription))
         exit(1)
     }
-    group.leave()
 }
 
 DispatchQueue.global(qos: .utility).async {
