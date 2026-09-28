@@ -6,6 +6,7 @@ import { openDb } from './db.js';
 import { loadConfig, saveConfig, redact } from './config.js';
 import { parseCaptureSequence, parseCaptureSource, validateWavPayload } from './audio.js';
 import { createAiRuntime } from './ai/index.js';
+import { createLogger } from './logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -34,6 +35,7 @@ export function createServer({ dbPath, configPath }) {
   const q = (sql) => db.prepare(sql);
   let cfg = loadConfig(configPath);
   let ai = createAiRuntime(cfg);
+  const logger = createLogger('server');
   applyRetentionPolicy(db, cfg.retentionDays);
   const clients = new Map();
 
@@ -119,6 +121,7 @@ export function createServer({ dbPath, configPath }) {
       String(req.body.title || 'Untitled meeting').trim().slice(0, 200),
       Date.now()
     );
+    logger.info('meeting created', { meetingId: id });
     res.status(201).json({ id });
   });
 
@@ -227,6 +230,7 @@ export function createServer({ dbPath, configPath }) {
         emit(id, 'action', { task, assignee: 'You' });
       }
     } catch (error) {
+      logger.error('transcription failed', { meetingId: id, reason: error.message });
       emit(id, 'error', { message: 'Transcription failed: ' + error.message });
       res.status(502).json({ error: 'Transcription failed. The meeting remains saved locally.' });
     }
@@ -260,6 +264,7 @@ export function createServer({ dbPath, configPath }) {
       q('UPDATE meetings SET ended_at=?, summary=? WHERE id=?').run(Date.now(), summary, id);
     });
     tx();
+    logger.info('meeting ended', { meetingId: id, segments: segments.length, actions: items.length });
     emit(id, 'meeting-ended', { summary });
     res.json({ summary, items });
   });
