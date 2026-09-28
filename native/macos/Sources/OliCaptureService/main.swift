@@ -124,7 +124,7 @@ func appendInt16LE(_ value: Int16, to data: inout Data) {
     appendUInt16LE(UInt16(bitPattern: value), to: &data)
 }
 
-final class CaptureService: NSObject, SCStreamOutput, SCStreamDelegate {
+final class CaptureService: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     private let output = Output()
     private let systemQueue = DispatchQueue(label: "dev.oli.capture.system", qos: .userInitiated)
     private let microphoneQueue = DispatchQueue(label: "dev.oli.capture.microphone", qos: .userInitiated)
@@ -268,7 +268,7 @@ final class CaptureService: NSObject, SCStreamOutput, SCStreamDelegate {
             blockBufferAllocator: nil,
             blockBufferMemoryAllocator: nil,
             flags: UInt32(kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment),
-            retainedBlockBufferOut: &retainedBlockBuffer
+            blockBufferOut: &retainedBlockBuffer
         )
         guard status == noErr else { return nil }
 
