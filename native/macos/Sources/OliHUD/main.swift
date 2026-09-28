@@ -135,7 +135,7 @@ struct HUDView: View {
                     Text("LIVE TRANSCRIPT").font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(.white.opacity(0.4))
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 5) {
-                            ForEach(Array(model.transcript.enumerated()), id: \\.offset) { _, item in
+                            ForEach(Array(model.transcript.enumerated()), id: \.offset) { _, item in
                                 HStack(alignment: .top, spacing: 6) {
                                     Text(item.speaker.uppercased()).font(.system(size: 8, weight: .bold, design: .monospaced)).foregroundStyle(.white.opacity(0.4)).frame(width: 42, alignment: .leading)
                                     Text(item.text).font(.system(size: 11)).foregroundStyle(.white.opacity(0.85)).lineLimit(3)
