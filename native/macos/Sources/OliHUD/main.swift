@@ -97,14 +97,14 @@ struct HUDView: View {
     private var ambient: some View {
         HStack(spacing: 10) {
             Circle().fill(model.meetingActive ? Color.green : Color.white.opacity(0.35)).frame(width: 7, height: 7)
-            Text(model.meetingActive ? "(Int(model.talkRatio * 100))% TALK" : "OLI")
+            Text(model.meetingActive ? "\(Int(model.talkRatio * 100))% TALK" : "OLI")
                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                 .foregroundStyle(.white.opacity(0.9))
             if model.meetingActive {
                 Capsule().fill(Color.white.opacity(0.14)).frame(width: 54, height: 4).overlay(alignment: .leading) {
                     Capsule().fill(model.talkRatio > 0.65 ? Color.orange : Color.green).frame(width: 54 * model.talkRatio, height: 4)
                 }
-                Text("⧗ (model.commitments)").font(.system(size: 10, weight: .semibold, design: .monospaced)).foregroundStyle(.white.opacity(0.65))
+                Text("⧗ \(model.commitments)").font(.system(size: 10, weight: .semibold, design: .monospaced)).foregroundStyle(.white.opacity(0.65))
             }
         }
         .padding(.horizontal, 16)
@@ -135,7 +135,7 @@ struct HUDView: View {
                     Text("LIVE TRANSCRIPT").font(.system(size: 9, weight: .bold, design: .monospaced)).foregroundStyle(.white.opacity(0.4))
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 5) {
-                            ForEach(Array(model.transcript.enumerated()), id: .offset) { _, item in
+                            ForEach(Array(model.transcript.enumerated()), id: \\.offset) { _, item in
                                 HStack(alignment: .top, spacing: 6) {
                                     Text(item.speaker.uppercased()).font(.system(size: 8, weight: .bold, design: .monospaced)).foregroundStyle(.white.opacity(0.4)).frame(width: 42, alignment: .leading)
                                     Text(item.text).font(.system(size: 11)).foregroundStyle(.white.opacity(0.85)).lineLimit(3)
@@ -150,15 +150,15 @@ struct HUDView: View {
                     if !model.whisper.isEmpty {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(model.whisper).font(.system(size: 12, weight: .semibold)).foregroundStyle(.yellow)
-                            if !model.whisperSource.isEmpty { Text("From (model.whisperSource)").font(.system(size: 9)).foregroundStyle(.white.opacity(0.35)) }
+                            if !model.whisperSource.isEmpty { Text("From \(model.whisperSource)").font(.system(size: 9)).foregroundStyle(.white.opacity(0.35)) }
                         }
                     } else { Text("Listening for triggers…").font(.system(size: 11)).foregroundStyle(.white.opacity(0.45)) }
-                    Text("Talk time  (Int(model.talkRatio * 100))% you").font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(.white.opacity(0.65))
+                    Text("Talk time  \(Int(model.talkRatio * 100))% you").font(.system(size: 10, weight: .medium, design: .monospaced)).foregroundStyle(.white.opacity(0.65))
                     Capsule().fill(Color.white.opacity(0.12)).frame(height: 5).overlay(alignment: .leading) { Capsule().fill(Color.green).frame(width: 220 * model.talkRatio, height: 5) }
                 }.frame(width: 230, alignment: .leading)
             }
             Divider().overlay(Color.white.opacity(0.10))
-            HStack(spacing: 10) { Text("⧗").foregroundStyle(.yellow); Text(model.commitments == 0 ? model.footer : "(model.commitments) open commitment(s)").font(.system(size: 10)).foregroundStyle(.white.opacity(0.72)); Spacer() }
+            HStack(spacing: 10) { Text("⧗").foregroundStyle(.yellow); Text(model.commitments == 0 ? model.footer : "\(model.commitments) open commitment(s)").font(.system(size: 10)).foregroundStyle(.white.opacity(0.72)); Spacer() }
         }.padding(16)
     }
 }
