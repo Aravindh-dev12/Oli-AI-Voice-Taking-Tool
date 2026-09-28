@@ -24,7 +24,7 @@ test('config persists bounded runtime settings and redacts secrets', () => {
   const publicConfig = redact(loaded);
   assert.equal(publicConfig.geminiSet, true);
   assert.equal(publicConfig.nvidiaSet, true);
-  assert.equal(publicConfig.geminiApiKey.endsWith('hash'), false);
+  assert.equal(publicConfig.geminiApiKey.includes('secret-gemini'), false);
   assert.match(publicConfig.geminiApiKey, /••••/);
   assert.match(publicConfig.nvidiaApiKey, /••••/);
 });
