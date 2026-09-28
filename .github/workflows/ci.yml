@@ -28,7 +28,7 @@ jobs:
         run: npm test
 
   native-macos:
-    if: startsWith(github.head_ref, '09-') || startsWith(github.head_ref, '10-') || github.ref == 'refs/heads/main'
+    if: startsWith(github.head_ref, '09-') || startsWith(github.head_ref, '10-') || startsWith(github.head_ref, '11-') || github.ref == 'refs/heads/main'
     runs-on: macos-latest
     timeout-minutes: 35
     steps:
