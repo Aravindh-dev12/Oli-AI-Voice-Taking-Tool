@@ -219,3 +219,7 @@ Then start the local copilot on localhost:
 In another terminal run `npm start`. On macOS, when `OliCaptureService` and `oli-whisper` are available, Oli captures both channels natively and transcribes through the persistent Rust Whisper process. The copilot path remains on the local Llama server.
 
 See `docs/local-llm.md` for model/runtime details and `docs/local-ai.md` for the provider selection boundary.
+
+## Native macOS HUD
+
+On macOS, `OliHUD` is the native SwiftUI/AppKit visual shell for the notch. It is non-activating, content-protected, and receives live transcript/whisper state from the Electron meeting engine. Build it with `npm run build:native:mac`. See `docs/native-hud.md` for the IPC/fallback details.

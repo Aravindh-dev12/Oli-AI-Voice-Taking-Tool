@@ -20,6 +20,12 @@ let nativeCaptureActive = false;
 function setState(state) {
   app.dataset.state = state;
   window.oli?.resize(state);
+  window.oli?.reportHudState({ type: 'state', state, talkRatio: getTalkRatio(), commitments });
+}
+
+function getTalkRatio() {
+  const total = words.You + words.Them;
+  return total ? words.You / total : 0;
 }
 
 function goPill() {
@@ -58,6 +64,14 @@ window.oli?.onTrayToggleMeeting(() => (meetingId ? endMeeting() : startMeeting()
 window.oli?.onNativeCaptureError((payload) => {
   $('#footer').textContent = payload?.message || 'Native capture error.';
 });
+window.oli?.onNativeHudCommand((payload) => {
+  if (payload?.event === 'startMeeting') return startMeeting();
+  if (payload?.event === 'endMeeting') return endMeeting();
+  if (payload?.event === 'toggleMeeting') return meetingId ? endMeeting() : startMeeting();
+});
+window.oli?.onNativeHudError((payload) => {
+  $('#footer').textContent = payload?.message || 'Native HUD error.';
+});
 
 $('.view-pill').addEventListener('click', () => {
   if (!meetingId) startMeeting();
@@ -85,6 +99,7 @@ function addSegment(s) {
   $('#nudge').textContent = total > 60 && pct > 65
     ? 'You are doing most of the talking. Ask an open-ended question.'
     : '';
+  window.oli?.reportHudState({ type: 'transcript', speaker: s.speaker, text: s.text, talkRatio: total ? words.You / total : 0, commitments });
 }
 
 function addWhisper(w) {
@@ -96,6 +111,7 @@ function addWhisper(w) {
   source.textContent = w.source ? 'From: ' + w.source : 'No knowledge-base match';
   d.append(tip, source);
   $('#whispers').prepend(d);
+  window.oli?.reportHudState({ type: 'whisper', whisper: w.tip, source: w.source || '', talkRatio: getTalkRatio(), commitments });
   if (app.dataset.state !== 'shelf') goFlare(w.tip, w.source, w.trigger);
 }
 
@@ -103,6 +119,7 @@ function addAction(a) {
   commitments += 1;
   $('#pillCount').textContent = '⧗ ' + commitments;
   $('#footer').textContent = 'Commitment noted: ' + a.task;
+  window.oli?.reportHudState({ type: 'action', task: a.task, talkRatio: getTalkRatio(), commitments });
 }
 
 function setMeetingUi(active) {
@@ -111,6 +128,7 @@ function setMeetingUi(active) {
   $('#statusRing').classList.toggle('off', !active);
   $('#shelfTitle').textContent = active ? 'Live meeting' : 'No meeting running';
   window.oli?.reportMeetingState(active);
+  window.oli?.reportHudState({ type: 'meeting', active, talkRatio: getTalkRatio(), commitments });
 }
 
 async function createMeeting() {
