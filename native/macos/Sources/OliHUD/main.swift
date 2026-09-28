@@ -207,6 +207,7 @@ final class HUDController: NSObject, NSApplicationDelegate, @unchecked Sendable 
     init(model: HUDModel) { self.model = model }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        panel = HUDPanel(size: CGSize(width: 236, height: 36), origin: NSPoint(x: 0, y: 0))
         positionPanel()
         model.onStateChange = { [weak self] _ in self?.positionPanel() }
         model.onEvent = { [weak self] event in self?.send(event) }
