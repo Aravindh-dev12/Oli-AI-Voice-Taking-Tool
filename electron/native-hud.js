@@ -10,7 +10,7 @@ function findBinary() {
   return candidates.find((candidate) => fs.existsSync(candidate)) || null;
 }
 
-export function createNativeHudManager({ onEvent = () => {}, onError = () => {} }) {
+export function createNativeHudManager({ onEvent = () => {}, onError = () => {}, onExit = () => {} }) {
   let child = null;
   let buffer = '';
 
@@ -65,9 +65,10 @@ export function createNativeHudManager({ onEvent = () => {}, onError = () => {} 
       emitError('Native HUD process error: ' + error.message);
       child = null;
     });
-    child.on('close', () => {
+    child.on('close', (code) => {
       child = null;
       buffer = '';
+      try { onExit(code); } catch {}
     });
 
     return { active: true, mode: 'swiftui-appkit' };
