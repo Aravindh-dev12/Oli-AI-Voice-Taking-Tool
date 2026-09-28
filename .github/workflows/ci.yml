@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main, '01-*', '02-*', '03-*', '04-*', '05-*', '06-*', '07-*', '08-*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install
+        run: npm install
+      - name: Syntax check
+        run: npm run check
+      - name: Test
+        run: npm test
