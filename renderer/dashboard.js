@@ -324,7 +324,7 @@ async function loadAgents() {
     agentList.forEach((agent) => select.append(new Option(agent.name, agent.id)));
     if (!selectedAgent || !agentList.some((a) => a.id === selectedAgent)) selectedAgent = agentList[0]?.id || null;
     renderAgentEditor();
-    await Promise.all([loadApprovals(), loadInbox(), loadBrain(), loadSchedules()]);
+    await Promise.all([loadApprovals(), loadInbox(), loadBrain(), loadSchedules(), loadSkills(), loadSources(), loadFamilies(), loadJobs(), loadHandoffs(), loadBatches()]);
   } catch (error) {
     $('#agentMsg').textContent = error.message;
   }
@@ -476,9 +476,10 @@ $('#runAgent').addEventListener('click', async () => {
   const request = $('#agentRequest').value.trim();
   if (!request) return;
   try {
+    const skillId = $('#selectedSkill')?.value || undefined;
     const result = await api('/agents/' + encodeURIComponent(selectedAgent) + '/run', {
       method: 'POST',
-      body: JSON.stringify({ request, meetingId: $('#agentMeetingId').value.trim() || undefined })
+      body: JSON.stringify({ request, meetingId: $('#agentMeetingId').value.trim() || undefined, skillId })
     });
     $('#agentMsg').textContent = result.answer || 'Agent completed.';
     $('#agentRequest').value = '';
@@ -503,5 +504,166 @@ $('#addSchedule').addEventListener('click', async () => {
     });
     $('#schedulePrompt').value = '';
     loadSchedules();
+  } catch (error) { $('#agentMsg').textContent = error.message; }
+});
+
+
+async function loadSkills() {
+  const list = $('#skillList');
+  try {
+    const skills = await api('/skills');
+    list.replaceChildren();
+    if (!skills.length) list.append(el('li', 'empty', 'No skills configured.'));
+    skills.forEach((skill) => {
+      const li = el('li');
+      li.append(el('b', null, skill.name + ' v' + skill.version), el('span', null, skill.description));
+      const toggle = el('button', skill.enabled ? 'danger' : null, skill.enabled ? 'Disable' : 'Enable');
+      toggle.addEventListener('click', async () => {
+        await api('/skills/' + encodeURIComponent(skill.id), { method: 'PATCH', body: JSON.stringify({ enabled: !skill.enabled }) });
+        loadSkills();
+      });
+      li.append(toggle);
+      list.append(li);
+    });
+    const prompt = $('#agentRequest');
+    if (prompt && skills[0] && !$('#selectedSkill')) {
+      const select = document.createElement('select');
+      select.id = 'selectedSkill';
+      select.append(new Option('No skill', ''));
+      skills.forEach((skill) => select.append(new Option(skill.name, skill.id)));
+      prompt.parentElement.insertBefore(select, prompt);
+    }
+  } catch (error) { list.append(el('li', 'empty', error.message)); }
+}
+
+async function loadSources() {
+  const list = $('#sourceList');
+  try {
+    const sources = await api('/sources');
+    list.replaceChildren();
+    if (!sources.length) list.append(el('li', 'empty', 'No local sources connected.'));
+    sources.forEach((source) => {
+      const li = el('li');
+      li.append(el('b', null, source.name), el('span', null, (source.enabled ? 'Enabled' : 'Disabled') + ' · ' + source.root_path));
+      const sync = el('button', null, 'Sync');
+      sync.addEventListener('click', async () => {
+        await api('/sources/' + encodeURIComponent(source.id) + '/sync', { method: 'POST' });
+        loadSources();
+      });
+      const toggle = el('button', source.enabled ? 'danger' : null, source.enabled ? 'Disable' : 'Enable');
+      toggle.addEventListener('click', async () => {
+        await api('/sources/' + encodeURIComponent(source.id), { method: 'PATCH', body: JSON.stringify({ enabled: !source.enabled }) });
+        loadSources();
+      });
+      const remove = el('button', 'danger', 'Remove');
+      remove.addEventListener('click', async () => {
+        await api('/sources/' + encodeURIComponent(source.id), { method: 'DELETE' });
+        loadSources();
+      });
+      li.append(sync, toggle, remove);
+      list.append(li);
+    });
+  } catch (error) { list.append(el('li', 'empty', error.message)); }
+}
+
+async function loadFamilies() {
+  const list = $('#familyList');
+  try {
+    const families = await api('/agent/families');
+    list.replaceChildren();
+    families.forEach((family) => {
+      const li = el('li');
+      const members = family.agents.map((id) => agentList.find((a) => a.id === id)?.name || id).join(', ') || 'No members';
+      li.append(el('b', null, family.name), el('span', null, family.description + ' · ' + members));
+      list.append(li);
+    });
+  } catch (error) { list.append(el('li', 'empty', error.message)); }
+}
+
+async function loadJobs() {
+  const list = $('#jobList');
+  try {
+    const jobs = await api('/agent/jobs?limit=25');
+    list.replaceChildren();
+    if (!jobs.length) list.append(el('li', 'empty', 'No jobs.'));
+    jobs.forEach((job) => {
+      const li = el('li');
+      const body = el('div');
+      body.append(el('b', null, job.kind + ' · ' + job.status), el('span', null, 'Attempts ' + job.attempts + '/' + job.max_attempts));
+      if (job.last_error) body.append(el('span', null, job.last_error));
+      const retry = el('button', null, 'Retry');
+      retry.disabled = job.status !== 'failed';
+      retry.addEventListener('click', async () => {
+        await api('/agent/jobs/' + encodeURIComponent(job.id) + '/retry', { method: 'POST' });
+        loadJobs();
+      });
+      const cancel = el('button', 'danger', 'Cancel');
+      cancel.disabled = !['pending','processing'].includes(job.status);
+      cancel.addEventListener('click', async () => {
+        await api('/agent/jobs/' + encodeURIComponent(job.id) + '/cancel', { method: 'POST' });
+        loadJobs();
+      });
+      li.append(body, retry, cancel);
+      list.append(li);
+    });
+  } catch (error) { list.append(el('li', 'empty', error.message)); }
+}
+
+async function loadHandoffs() {
+  const list = $('#handoffList');
+  try {
+    const items = await api('/agent/handoffs?limit=25');
+    list.replaceChildren();
+    if (!items.length) list.append(el('li', 'empty', 'No handoffs.'));
+    items.forEach((item) => {
+      const li = el('li');
+      li.append(el('b', null, item.from_agent_id || 'agent'), el('span', null, '→ ' + item.to_agent_name + ' · ' + item.status + ' · ' + item.request));
+      list.append(li);
+    });
+  } catch (error) { list.append(el('li', 'empty', error.message)); }
+}
+
+async function loadBatches() {
+  const list = $('#batchList');
+  try {
+    const items = await api('/agent/batches?limit=25');
+    list.replaceChildren();
+    if (!items.length) list.append(el('li', 'empty', 'No batches.'));
+    items.forEach((item) => {
+      const li = el('li');
+      li.append(el('b', null, item.title), el('span', null, item.status + ' · ' + item.completed_count + '/' + item.total_count));
+      list.append(li);
+    });
+  } catch (error) { list.append(el('li', 'empty', error.message)); }
+}
+
+$('#addSkill').addEventListener('click', async () => {
+  const id = $('#skillId').value.trim(), name = $('#skillName').value.trim(), prompt = $('#skillPrompt').value.trim();
+  if (!id || !name || !prompt) return;
+  try {
+    await api('/skills', { method: 'POST', body: JSON.stringify({ id, name, prompt, description: name, version: 1 }) });
+    $('#skillId').value = ''; $('#skillName').value = ''; $('#skillPrompt').value = '';
+    loadSkills();
+  } catch (error) { $('#agentMsg').textContent = error.message; }
+});
+
+$('#addSource').addEventListener('click', async () => {
+  const id = $('#sourceId').value.trim(), name = $('#sourceName').value.trim(), rootPath = $('#sourcePath').value.trim();
+  if (!id || !name || !rootPath) return;
+  try {
+    await api('/sources', { method: 'POST', body: JSON.stringify({ id, name, rootPath, sourceType: 'markdown', enabled: true }) });
+    await api('/sources/' + encodeURIComponent(id) + '/sync', { method: 'POST' });
+    $('#sourceId').value = ''; $('#sourceName').value = ''; $('#sourcePath').value = '';
+    loadSources();
+  } catch (error) { $('#agentMsg').textContent = error.message; }
+});
+
+
+$('#createBatch').addEventListener('click', async () => {
+  try {
+    const items = $('#batchItems').value.split('\n').map((line) => line.trim()).filter(Boolean).map((line) => JSON.parse(line));
+    await api('/agent/batches', { method: 'POST', body: JSON.stringify({ title: $('#batchTitle').value.trim(), items }) });
+    $('#batchTitle').value = ''; $('#batchItems').value = '';
+    loadBatches(); loadJobs();
   } catch (error) { $('#agentMsg').textContent = error.message; }
 });

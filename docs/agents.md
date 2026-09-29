@@ -88,3 +88,38 @@ Research references:
 
 - https://myturnstone.ai/
 - https://myturnstone.ai/academy
+
+
+## 1.5 orchestration layer
+
+The 1.5 workflow layer adds four production-oriented primitives inspired by the current Turnstone workflows.
+
+### Skills
+
+Skills are versioned local instruction bundles. An agent can run with a selected skill, but the skill cannot bypass the agent's permission allow-list.
+
+Built-ins include Meeting Brief, Meeting Follow-up, Account Research and Risk Review.
+
+### Source registry
+
+Knowledge ingestion now supports multiple local Markdown roots. Each source has an id, name, path, enabled state and sync result. A file belongs to only one registered source to avoid index ownership conflicts.
+
+The legacy OLI_KNOWLEDGE_DIR setting is represented as the default-knowledge source.
+
+### Families and handoffs
+
+Agents can be grouped into families such as Meeting Operations and Research. Handoffs are persisted as jobs, so a parent agent can delegate a task while the target agent receives explicit handoff context.
+
+### Durable jobs and parallel batches
+
+Scheduled work is placed into a durable SQLite job queue. Jobs have:
+- pending/processing/succeeded/failed/cancelled state
+- attempt counts
+- bounded leases
+- exponential retry backoff
+- idempotency keys
+- cancellation and manual retry
+
+Parallel batches support up to eight independent agent jobs. Each child result is persisted and an aggregated result is placed into the local Inbox when the batch reaches a terminal state.
+
+This design is intentionally different from browser automation or cloud app orchestration: local agents work against Oli's existing Brain and knowledge sources, while external CRM actions remain approval-gated.

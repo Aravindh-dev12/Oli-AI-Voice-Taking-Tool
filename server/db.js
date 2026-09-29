@@ -56,8 +56,13 @@ export function openDb(dbPath) {
       file_path TEXT PRIMARY KEY,
       kb_id INTEGER NOT NULL,
       content_hash TEXT NOT NULL,
-      modified_at INTEGER NOT NULL
+      modified_at INTEGER NOT NULL,
+      source_id TEXT NOT NULL DEFAULT 'legacy'
     );
   `);
+  const kbSourceColumns = db.prepare('PRAGMA table_info(kb_sources)').all();
+  if (!kbSourceColumns.some((column) => column.name === 'source_id')) {
+    db.exec("ALTER TABLE kb_sources ADD COLUMN source_id TEXT NOT NULL DEFAULT 'legacy'");
+  }
   return db;
 }

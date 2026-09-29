@@ -66,6 +66,34 @@
       <div class="row"><label>Every (minutes)</label><input id="scheduleMinutes" type="number" min="1" max="10080" value="60"/></div>
       <div class="row"><input id="schedulePrompt" maxlength="4000" placeholder="Recurring prompt…"/><button id="addSchedule" class="primary">Schedule</button></div>
       <ul id="scheduleList"></ul>
+
+      <h3>Skills</h3>
+      <p class="hint">Reusable prompt workflows shared across local agents. Skills never bypass an agent's permissions.</p>
+      <ul id="skillList"></ul>
+      <div class="row"><input id="skillId" maxlength="100" placeholder="skill-id"/><input id="skillName" maxlength="200" placeholder="Skill name"/></div>
+      <div class="row"><input id="skillPrompt" maxlength="8000" placeholder="Skill instructions…"/><button id="addSkill" class="primary">Save skill</button></div>
+
+      <h3>Connected local sources</h3>
+      <p class="hint">Register multiple read-only Markdown roots. They remain indexed locally and can be enabled or disabled independently.</p>
+      <ul id="sourceList"></ul>
+      <div class="row"><input id="sourceId" maxlength="100" placeholder="source-id"/><input id="sourceName" maxlength="200" placeholder="Source name"/></div>
+      <div class="row"><input id="sourcePath" maxlength="1000" placeholder="/absolute/path/to/markdown"/><button id="addSource" class="primary">Connect</button></div>
+
+      <h3>Agent families</h3>
+      <ul id="familyList"></ul>
+
+      <h3>Durable jobs</h3>
+      <p class="hint">Scheduled, handoff and parallel agent work is persisted locally and retried with bounded backoff.</p>
+      <ul id="jobList"></ul>
+
+      <h3>Handoffs</h3>
+      <ul id="handoffList"></ul>
+
+      <h3>Parallel batches</h3>
+      <ul id="batchList"></ul>
+      <div class="row"><input id="batchTitle" maxlength="240" placeholder="Batch title"/></div>
+      <div class="row"><textarea id="batchItems" rows="5" maxlength="8000" placeholder='One JSON object per line: {"agentId":"researcher","request":"Review Acme context","meetingId":"optional","skillId":"optional"}'></textarea></div>
+      <div class="row"><button id="createBatch" class="primary">Run parallel batch</button></div>
     </div>
   </div>
 </main>
@@ -106,8 +134,6 @@
   <div class="row"><label>Embedding URL</label><input id="localEmbeddingUrl" placeholder="http://127.0.0.1:1234/v1/embeddings"/></div>
   <div class="row"><label>Embedding model</label><input id="localEmbeddingModel" placeholder="nomic-embed-text"/></div>
   <div class="row"><label>Embedding dims</label><input id="embeddingDimensions" type="number" min="32" max="4096"/></div>
-  <div class="row"><label>CRM webhook</label><input id="crmWebhookUrl" placeholder="https://crm.example.com/hooks/oli"/></div>
-  <div class="row"><label>CRM token</label><input id="crmWebhookToken" type="password" placeholder="Optional Bearer token"/></div>
   <div class="row"><label>CRM webhook</label><input id="crmWebhookUrl" placeholder="https://crm.example.com/hooks/oli"/></div>
   <div class="row"><label>CRM token</label><input id="crmWebhookToken" type="password" placeholder="Optional Bearer token"/></div>
 
