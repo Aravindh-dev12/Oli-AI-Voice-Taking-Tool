@@ -63,7 +63,8 @@ Oli is a tray-resident desktop copilot with a protected notch renderer, native m
    - approval queue for side effects
    - local Inbox and interval scheduler
    - local stdio MCP access to agent state
-\n## Data flow
+
+## Data flow
 
     Audio
       -> native ScreenCaptureKit or Chromium fallback
