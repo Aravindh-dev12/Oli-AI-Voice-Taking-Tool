@@ -1,7 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "rm -rf .vercel-static && mkdir -p .vercel-static && cp -R public/. .vercel-static/",
-  "outputDirectory": ".vercel-static",
+  "outputDirectory": "public",
   "cleanUrls": false,
   "rewrites": [
     { "source": "/", "destination": "/notch.html" }
