@@ -62,6 +62,10 @@ Oli is a tray-resident desktop copilot with a protected notch renderer, native m
    - focused agents with explicit permission modes
    - approval queue for side effects
    - local Inbox and interval scheduler
+   - reusable Skills and local source registry
+   - Families and durable Handoffs
+   - SQLite job queue with lease/retry/backoff semantics
+   - parallel fan-out/fan-in batches
    - local stdio MCP access to agent state
 
 ## Data flow
@@ -104,3 +108,24 @@ Oli's native audio pipeline is designed for low-latency local streaming, but end
 ## Turnstone-inspired boundary
 
 Turnstone's public product describes a shared local Brain, focused agents, connected sources, explicit permission modes, approvals, browser work, recurring automations and reusable Skills. Oli adopts the local Brain/agent/approval/Inbox pattern around meetings while keeping audio capture, inference and persistence sovereign. Browser control and provider-specific connectors remain optional future adapters instead of becoming implicit egress paths.
+
+
+## Orchestration data flow
+
+    User / schedule / meeting end
+              |
+        durable agent job
+              |
+       +------+------+
+       |             |
+     single         batch
+       |        +----+----+----+
+     agent     agent    agent   agent
+       |          \\      |      /
+       +-----------\\----+-----+
+                    |
+                 Inbox / approvals
+                    |
+              local Brain + KB
+
+Jobs persist in SQLite so a process restart does not erase queued work. Processing leases allow an abandoned job to become eligible again. External CRM actions still stop at the approval boundary.
