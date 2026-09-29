@@ -476,9 +476,10 @@ $('#runAgent').addEventListener('click', async () => {
   const request = $('#agentRequest').value.trim();
   if (!request) return;
   try {
+    const skillId = $('#selectedSkill')?.value || undefined;
     const result = await api('/agents/' + encodeURIComponent(selectedAgent) + '/run', {
       method: 'POST',
-      body: JSON.stringify({ request, meetingId: $('#agentMeetingId').value.trim() || undefined })
+      body: JSON.stringify({ request, meetingId: $('#agentMeetingId').value.trim() || undefined, skillId })
     });
     $('#agentMsg').textContent = result.answer || 'Agent completed.';
     $('#agentRequest').value = '';
@@ -657,22 +658,6 @@ $('#addSource').addEventListener('click', async () => {
   } catch (error) { $('#agentMsg').textContent = error.message; }
 });
 
-const originalRunAgent = $('#runAgent');
-originalRunAgent.addEventListener('click', async () => {
-  if (!selectedAgent) return;
-  const request = $('#agentRequest').value.trim();
-  if (!request) return;
-  try {
-    const skillId = $('#selectedSkill')?.value || undefined;
-    const result = await api('/agents/' + encodeURIComponent(selectedAgent) + '/run', {
-      method: 'POST',
-      body: JSON.stringify({ request, meetingId: $('#agentMeetingId').value.trim() || undefined, skillId })
-    });
-    $('#agentMsg').textContent = result.answer || 'Agent completed.';
-    $('#agentRequest').value = '';
-    await Promise.all([loadInbox(), loadApprovals(), loadBrain()]);
-  } catch (error) { $('#agentMsg').textContent = error.message; }
-});
 
 $('#createBatch').addEventListener('click', async () => {
   try {
