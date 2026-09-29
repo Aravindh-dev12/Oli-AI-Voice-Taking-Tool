@@ -1,0 +1,185 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Oli — Dashboard</title>
+<link rel="stylesheet" href="dashboard.css" />
+</head>
+<body>
+<header>
+  <div class="brand"><span class="brand-mark">O</span><div><h1>Oli</h1><span class="brand-subtitle">Sovereign intelligence workspace</span></div></div>
+  <div class="system-status"><span class="status-dot"></span>LOCAL CORE <span class="version">v1.5</span></div>
+  <nav>
+    <button data-t="hist" class="on">Sessions</button>
+    <button data-t="agents">Workspace</button>
+    <button data-t="kb">Knowledge</button>
+    <button data-t="settings">System</button>
+    <button data-t="privacy">Privacy</button>
+  </nav>
+</header>
+
+<main id="hist" class="on">
+  <div class="toolbar">
+    <input id="meetingSearch" placeholder="Search local transcript…"/>
+    <span id="histMsg" class="hint"></span>
+  </div>
+  <div class="split">
+    <div class="pane">
+      <h3>Meetings</h3>
+      <ul id="mlist"></ul>
+    </div>
+    <div class="pane wide" id="mdetail">
+      <p class="empty">Select a meeting to see its transcript, summary, action items, and export.</p>
+    </div>
+  </div>
+</main>
+
+
+
+<main id="agents">
+  <section class="workspace-hero">
+    <div>
+      <span class="eyebrow">OLI / GENERAL INTELLIGENCE</span>
+      <h2>One local Brain.<br><em>Every kind of work.</em></h2>
+      <p>Research, remember, reason and act across your files, sessions and workflows — without sending your private context away.</p>
+    </div>
+    <div class="hero-orbit" aria-hidden="true"><span class="orbit-core">BRAIN</span><span class="orbit-label label-one">RESEARCH</span><span class="orbit-label label-two">MEMORY</span><span class="orbit-label label-three">ACTION</span></div>
+  </section>
+  <div class="workspace-strip"><span><b>06</b> built-in skills</span><span><b>02</b> agent families</span><span><b>08</b> parallel workers</span><span><b>0 B</b> cloud egress</span></div>
+  <p class="hint">A local workflow layer: one Brain shared by focused agents, explicit permission modes, reviewable approvals, an Inbox, and durable schedules.</p>
+  <div class="split">
+    <div class="pane">
+      <h3>Agents</h3>
+      <ul id="alist"></ul>
+    </div>
+    <div class="pane wide">
+      <div id="agentEditor"></div>
+
+      <h3>Run agent</h3>
+      <div class="row"><input id="agentRequest" maxlength="4000" placeholder="Ask the selected agent to research, summarize or plan work…"/></div>
+      <div class="row"><label>Meeting ID</label><input id="agentMeetingId" placeholder="Optional completed meeting UUID"/></div>
+      <div class="row"><button id="runAgent" class="primary">Run</button><span id="agentMsg" class="hint"></span></div>
+
+      <h3>Approval queue</h3>
+      <ul id="approvalList"></ul>
+
+      <h3>Inbox</h3>
+      <ul id="inboxList"></ul>
+
+      <h3>Shared Brain</h3>
+      <div class="row"><input id="brainSearch" maxlength="500" placeholder="Search people, projects, decisions, facts…"/><button id="brainSearchBtn">Search</button></div>
+      <ul id="brainList"></ul>
+
+      <h3>Schedules</h3>
+      <div class="row"><label>Agent</label><select id="scheduleAgent"></select></div>
+      <div class="row"><label>Every (minutes)</label><input id="scheduleMinutes" type="number" min="1" max="10080" value="60"/></div>
+      <div class="row"><input id="schedulePrompt" maxlength="4000" placeholder="Recurring prompt…"/><button id="addSchedule" class="primary">Schedule</button></div>
+      <ul id="scheduleList"></ul>
+
+      <h3>Skills</h3>
+      <p class="hint">Reusable prompt workflows shared across local agents. Skills never bypass an agent's permissions.</p>
+      <ul id="skillList"></ul>
+      <div class="row"><input id="skillId" maxlength="100" placeholder="skill-id"/><input id="skillName" maxlength="200" placeholder="Skill name"/></div>
+      <div class="row"><input id="skillPrompt" maxlength="8000" placeholder="Skill instructions…"/><button id="addSkill" class="primary">Save skill</button></div>
+
+      <h3>Connected local sources</h3>
+      <p class="hint">Register multiple read-only Markdown roots. They remain indexed locally and can be enabled or disabled independently.</p>
+      <ul id="sourceList"></ul>
+      <div class="row"><input id="sourceId" maxlength="100" placeholder="source-id"/><input id="sourceName" maxlength="200" placeholder="Source name"/></div>
+      <div class="row"><input id="sourcePath" maxlength="1000" placeholder="/absolute/path/to/markdown"/><button id="addSource" class="primary">Connect</button></div>
+
+      <h3>Agent families</h3>
+      <ul id="familyList"></ul>
+
+      <h3>Durable jobs</h3>
+      <p class="hint">Scheduled, handoff and parallel agent work is persisted locally and retried with bounded backoff.</p>
+      <ul id="jobList"></ul>
+
+      <h3>Handoffs</h3>
+      <ul id="handoffList"></ul>
+
+      <h3>Parallel batches</h3>
+      <ul id="batchList"></ul>
+      <div class="row"><input id="batchTitle" maxlength="240" placeholder="Batch title"/></div>
+      <div class="row"><textarea id="batchItems" rows="5" maxlength="8000" placeholder='One JSON object per line: {"agentId":"researcher","request":"Review Acme context","meetingId":"optional","skillId":"optional"}'></textarea></div>
+      <div class="row"><button id="createBatch" class="primary">Run parallel batch</button></div>
+    </div>
+  </div>
+</main>
+<main id="kb">
+  <p class="hint">Whispers are grounded only in trusted entries stored locally here.</p>
+  <div class="row"><input id="kt" maxlength="200" placeholder="Title — e.g. Competitor X pricing" /></div>
+  <textarea id="kc" rows="5" maxlength="20000" placeholder="Facts, battlecards, pricing, security notes, objection handling…"></textarea>
+  <div class="row"><button id="ka" class="primary">Save entry</button></div>
+  <ul id="klist"></ul>
+</main>
+
+<main id="settings">
+  <h3>Inference mode</h3>
+  <p class="hint">Auto prefers a fully configured local stack. Cloud providers are opt-in fallbacks for development.</p>
+  <div class="row"><label>Provider</label><select id="aiProvider"><option value="auto">Auto</option><option value="local">Local</option><option value="gemini">Gemini</option><option value="nvidia">NVIDIA</option></select></div>
+  <div class="row"><label>Timeout (ms)</label><input id="aiTimeoutMs" type="number" min="1000" max="120000" step="1000"/></div>
+
+  <h3>Native Whisper / whisper.cpp</h3>
+  <p class="hint">Native transcription is preferred in sovereign mode. The GGML model stays on disk; on Apple Silicon, the optional Core ML encoder sits beside it for ANE acceleration.</p>
+  <div class="row"><label>Binary</label><input id="whisperBinaryPath" placeholder="Auto-detect packaged oli-whisper"/></div>
+  <div class="row"><label>Model</label><input id="whisperModelPath" placeholder="/absolute/path/to/ggml-base.en-q5_0.bin"/></div>
+  <div class="row"><label>Language</label><input id="whisperLanguage" placeholder="en"/></div>
+  <div class="row"><label>Threads</label><input id="whisperThreads" type="number" min="1" max="64"/></div>
+
+  <h3>Local HTTP transcription fallback</h3>
+  <div class="row"><label>Endpoint</label><input id="localTranscriptionUrl" placeholder="http://127.0.0.1:8000/v1/audio/transcriptions"/></div>
+  <div class="row"><label>Model</label><input id="localTranscriptionModel"/></div>
+
+  <h3>Local chat</h3>
+  <div class="row"><label>Endpoint</label><input id="localChatUrl" placeholder="http://127.0.0.1:1234/v1/chat/completions"/></div>
+  <div class="row"><label>Model</label><input id="localChatModel"/></div>
+
+  <h3>Local knowledge + integrations</h3>
+  <p class="hint">Point Oli at a folder of Markdown files, including exported Notion Markdown. Files stay local and are indexed into the SQLite FTS knowledge base.</p>
+  <div class="row"><label>Knowledge folder</label><input id="knowledgeDir" placeholder="/absolute/path/to/knowledge"/></div>
+  <div class="row"><button id="syncKnowledge" class="primary">Sync Markdown</button><span id="knowledgeMsg" class="hint"></span></div>
+  <div class="row"><label>Obsidian vault</label><input id="obsidianVaultPath" placeholder="/absolute/path/to/Obsidian vault"/></div>
+  <div class="row"><label>Embedding URL</label><input id="localEmbeddingUrl" placeholder="http://127.0.0.1:1234/v1/embeddings"/></div>
+  <div class="row"><label>Embedding model</label><input id="localEmbeddingModel" placeholder="nomic-embed-text"/></div>
+  <div class="row"><label>Embedding dims</label><input id="embeddingDimensions" type="number" min="32" max="4096"/></div>
+  <div class="row"><label>CRM webhook</label><input id="crmWebhookUrl" placeholder="https://crm.example.com/hooks/oli"/></div>
+  <div class="row"><label>CRM token</label><input id="crmWebhookToken" type="password" placeholder="Optional Bearer token"/></div>
+
+  <h3>Gemini — optional development provider</h3>
+  <div class="row"><label>API key <span id="gStatus" class="tag"></span></label><input id="gKey" type="password" placeholder="Paste a new key to replace it" /></div>
+  <div class="row"><label>Model</label><input id="gModel" /></div>
+
+  <h3>NVIDIA — optional copilot provider</h3>
+  <div class="row"><label>API key <span id="nStatus" class="tag"></span></label><input id="nKey" type="password" placeholder="Paste a new key to replace it" /></div>
+  <div class="row"><label>Model</label><input id="nModel" /></div>
+
+  <div class="row"><button id="saveSettings" class="primary">Save settings</button><span id="saveMsg" class="hint"></span></div>
+</main>
+
+<main id="privacy">
+  <h3>Local data</h3>
+  <div class="stats">
+    <div class="stat"><b id="privacyMeetings">0</b><span>meetings</span></div>
+    <div class="stat"><b id="privacySegments">0</b><span>transcript segments</span></div>
+    <div class="stat"><b id="privacyKb">0</b><span>knowledge entries</span></div>
+  </div>
+  <p class="hint" id="privacyMode"></p>
+
+  <h3>Retention</h3>
+  <p class="hint">Set 0 to keep ended meetings indefinitely. Otherwise, ended meetings older than the selected number of days are removed.</p>
+  <div class="row"><label>Days</label><input id="retentionDays" type="number" min="0" max="3650" step="1"/></div>
+  <div class="row">
+    <button id="savePrivacy" class="primary">Save retention</button>
+    <button id="runCleanup" class="danger">Clean now</button>
+    <span id="privacyMsg" class="hint"></span>
+  </div>
+
+  <h3>Privacy model</h3>
+  <p class="hint">Oli stores meetings in its local SQLite database. In local AI mode, transcription and copilot requests target localhost only. Cloud-provider modes send audio/text to the configured provider.</p>
+</main>
+
+<script src="dashboard.js"></script>
+</body>
+</html>
