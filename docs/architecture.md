@@ -57,7 +57,13 @@ Oli is a tray-resident desktop copilot with a protected notch renderer, native m
    - reads the same local SQLite source of truth
    - exposes meeting retrieval, transcript/KB search, commitments and MEDDPICC
 
-## Data flow
+9. **Sovereign agent workbench**
+   - local shared Brain in SQLite + FTS5
+   - focused agents with explicit permission modes
+   - approval queue for side effects
+   - local Inbox and interval scheduler
+   - local stdio MCP access to agent state
+\n## Data flow
 
     Audio
       -> native ScreenCaptureKit or Chromium fallback
@@ -92,3 +98,8 @@ On Apple Silicon, whisper.cpp can use Metal for GPU execution and Core ML for en
 ## Latency boundary
 
 Oli's native audio pipeline is designed for low-latency local streaming, but end-to-end sub-second latency depends on capture chunk size, local model size/quantization, Apple Silicon load, and the conferencing client's audio routing. The repository does not guarantee a universal sub-second SLA.
+
+
+## Turnstone-inspired boundary
+
+Turnstone's public product describes a shared local Brain, focused agents, connected sources, explicit permission modes, approvals, browser work, recurring automations and reusable Skills. Oli adopts the local Brain/agent/approval/Inbox pattern around meetings while keeping audio capture, inference and persistence sovereign. Browser control and provider-specific connectors remain optional future adapters instead of becoming implicit egress paths.
