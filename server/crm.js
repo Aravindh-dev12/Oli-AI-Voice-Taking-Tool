@@ -17,7 +17,7 @@ export async function syncMeetingToCrm({ meeting, meddpicc, actions, webhookUrl,
       headers,
       body: JSON.stringify({
         source: 'oli',
-        version: '1.3.0',
+        version: '1.4.0',
         event: 'meeting.completed',
         meeting,
         meddpicc: meddpicc || null,
