@@ -102,13 +102,14 @@ export function createServer({ dbPath, configPath }) {
     const hit = terms
       ? q('SELECT rowid AS id, title, content FROM kb WHERE kb MATCH ? ORDER BY rank LIMIT 1').get(terms)
       : null;
+    const brainHit = searchBrain(text, 3)[0] || null;
 
     try {
       const semantic = await vector.search(text, 3);
-      const contextEntry = semantic[0] || hit;
+      const contextEntry = semantic[0] || hit || brainHit;
       const tip = await ai.copilot(
-        'You are a real-time meeting copilot. Reply with one concise bullet under 25 words. Use only verified context when supplied. Otherwise ask one useful discovery question. No filler or preamble.',
-        'Verified context:\n' + (contextEntry ? contextEntry.content.slice(0, 800) : 'none') +
+        'You are a real-time meeting copilot. Reply with one concise bullet under 25 words. Use only verified local context when supplied. Never invent facts. Otherwise ask one useful discovery question. No filler or preamble.',
+        'Verified local context:\n' + (contextEntry ? contextEntry.content.slice(0, 1200) : 'none') +
         '\n\nParticipant said: "' + text.slice(0, 2000) + '"'
       );
       if (tip) emit(id, 'whisper', { tip, source: contextEntry?.title || null, sourceId: contextEntry?.id || null, trigger: text });
