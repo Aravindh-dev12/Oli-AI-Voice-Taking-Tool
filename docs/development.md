@@ -116,7 +116,7 @@ For semantic RAG, configure the local embedding endpoint and dimension:
 
 ## CRM webhook
 
-Set `OLI_CRM_WEBHOOK_URL` to an HTTP/HTTPS automation endpoint. Optionally set `OLI_CRM_WEBHOOK_TOKEN` for a Bearer token. When a meeting ends, Oli can POST the meeting record, summary, MEDDPICC fields and commitment statuses. Audio is never included in the CRM payload.
+Set `OLI_CRM_WEBHOOK_URL` to an HTTP/HTTPS automation endpoint. Optionally set `OLI_CRM_WEBHOOK_TOKEN` for a Bearer token. When a meeting ends, Oli queues a reviewable approval for the structured meeting record, summary, MEDDPICC fields and commitment statuses. The external POST occurs only after approval. Audio is never included in the CRM payload.
 
 
 ## Agent workbench
