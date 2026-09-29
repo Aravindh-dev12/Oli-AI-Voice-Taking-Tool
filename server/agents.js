@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { parseJsonObject } from './ai/utils.js';
 import { getMeetingContext } from './rag.js';
-import { initBrainStore, upsertBrainMemory, searchBrain, listBrainMemories, deleteBrainMemory, serializeBrainContext } from './brain.js';
+import { initBrainStore, upsertBrainMemory, searchBrain, listBrainMemories, deleteBrainMemory, seedMeetingBrain, serializeBrainContext } from './brain.js';
 import { syncMeetingToObsidian } from './obsidian.js';
 import { syncMeetingToCrm } from './crm.js';
 import { initSkillsStore, getSkill } from './skills.js';
@@ -303,5 +303,5 @@ export {
   PERMISSIONS,ACTIONS,initAgentStore,listAgents,getAgent,updateAgent,runAgent,
   listInbox,markInbox,listApprovals,createApproval,resolveApproval,listSchedules,
   createSchedule,updateSchedule,deleteSchedule,startAgentScheduler,searchBrain,
-  listBrainMemories,deleteBrainMemory
+  listBrainMemories,deleteBrainMemory,seedMeetingBrain
 };

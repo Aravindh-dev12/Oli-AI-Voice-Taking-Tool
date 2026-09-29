@@ -9,6 +9,10 @@ use std::io::Cursor;
 use std::path::Path;
 use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters};
 
+pub mod attestation;
+pub mod echo_canceller;
+pub mod semantic_router;
+
 #[derive(Debug, Serialize)]
 struct SegmentOut {
     start_ms: i64,
