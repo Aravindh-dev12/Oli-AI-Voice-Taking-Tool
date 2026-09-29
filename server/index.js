@@ -215,12 +215,21 @@ export function createServer({ dbPath, configPath }) {
     catch (error) { return res.status(400).json({ error: error.message }); }
   });
 
-  app.post('/api/sources/:id/sync', (req, res) => {
-    try { return res.json(syncRegisteredSource(db, req.params.id)); }
-    catch (error) { return res.status(400).json({ error: error.message }); }
+  app.post('/api/sources/:id/sync', async (req, res) => {
+    try {
+      const result = syncRegisteredSource(db, req.params.id);
+      const vectorResult = vector.enabled && cfg.localEmbeddingUrl ? await vector.reindexAll() : null;
+      return res.json({ ...result, vector: vectorResult });
+    } catch (error) { return res.status(400).json({ error: error.message }); }
   });
 
-  app.post('/api/sources/sync-all', (_, res) => res.json(syncAllRegisteredSources(db)));
+  app.post('/api/sources/sync-all', async (_, res) => {
+    try {
+      const results = syncAllRegisteredSources(db);
+      const vectorResult = vector.enabled && cfg.localEmbeddingUrl ? await vector.reindexAll() : null;
+      return res.json({ results, vector: vectorResult });
+    } catch (error) { return res.status(500).json({ error: error.message }); }
+  });
 
   app.patch('/api/sources/:id', (req, res) => {
     try { return res.json(setSourceEnabled(db, req.params.id, req.body?.enabled)); }
