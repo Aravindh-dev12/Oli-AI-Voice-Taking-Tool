@@ -136,3 +136,18 @@ MCP can run agents against the same state:
 Meeting-complete CRM sync is approval-gated. Review it in Dashboard → Agents or through oli_list_approvals / oli_resolve_approval before the external webhook is called.
 
 See docs/agents.md for the full lifecycle and privacy behavior.
+
+
+### Skills
+
+Use Dashboard → Agents to select a reusable skill before a run. Built-ins include Meeting Brief, Meeting Follow-up, Account Research and Risk Review. Custom skills are stored locally in SQLite.
+
+### Multiple local sources
+
+Use Dashboard → Agents → Connected local sources to register additional Markdown roots. Each file can belong to one registered source only. Source sync updates FTS locally; configure the existing localhost embedding endpoint when semantic indexing is desired.
+
+### Durable orchestration
+
+Scheduled work is persisted as jobs. Use the Agent dashboard to inspect pending/processing/failed jobs and manually retry or cancel them.
+
+MCP supports local handoffs and parallel batches. A batch accepts up to eight independent agent requests and writes an aggregate result to the local Inbox.
