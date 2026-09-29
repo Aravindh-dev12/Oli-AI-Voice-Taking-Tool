@@ -141,9 +141,19 @@ The dashboard contains:
 
 ## Agent workbench
 
-Oli now has a Turnstone-inspired local agent layer around the meeting engine:\n\n- Shared Brain for people, projects, decisions, facts, meetings and commitments.\n- Meeting Analyst, Follow-up Planner and Local Researcher agents.\n- Permission modes: read_only, ask_first, always_allow.\n- Approval-gated side effects with an auditable local trail.\n- Local Inbox for agent results and follow-up drafts.\n- Optional local interval schedules from 1 minute to 7 days.\n- MCP access to Brain, agents, approvals, Inbox and schedules.
+Oli now has a Turnstone-inspired local agent layer around the meeting engine:
 
-After a meeting ends, Oli seeds the shared Brain and runs the Meeting Analyst when an AI runtime is available. CRM synchronization is presented as an approval instead of an automatic external write. See docs/agents.md.\n\n## MCP
+- Shared Brain for people, projects, decisions, facts, meetings and commitments.
+- Meeting Analyst, Follow-up Planner and Local Researcher agents.
+- Permission modes: read_only, ask_first, always_allow.
+- Approval-gated side effects with an auditable local trail.
+- Local Inbox for agent results and follow-up drafts.
+- Optional local interval schedules from 1 minute to 7 days.
+- MCP access to Brain, agents, approvals, Inbox and schedules.
+
+After a meeting ends, Oli seeds the shared Brain and runs the Meeting Analyst when an AI runtime is available. CRM synchronization is presented as an approval instead of an automatic external write. See docs/agents.md.
+
+## MCP
 
     npm run mcp -- --db "/absolute/path/to/oli.db"
 
