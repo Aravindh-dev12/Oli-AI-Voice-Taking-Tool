@@ -263,7 +263,7 @@ function updateSchedule(db,id,values={}){
 }
 function deleteSchedule(db,id){ const r=db.prepare('DELETE FROM agent_schedules WHERE id=?').run(String(id)); if(!r.changes) throw new Error('Schedule not found.'); return {ok:true}; }
 
-function startAgentScheduler({db,ai,cfg,tickMs=5000}){
+function startAgentScheduler({db,getAi,getCfg,tickMs=5000}){
   const inFlight=new Set();
   const timer=setInterval(async()=>{
     const due=db.prepare('SELECT * FROM agent_schedules WHERE enabled=1 AND next_run_at<=? ORDER BY next_run_at LIMIT 5').all(Date.now());
@@ -271,7 +271,7 @@ function startAgentScheduler({db,ai,cfg,tickMs=5000}){
       if(inFlight.has(schedule.id)) continue;
       inFlight.add(schedule.id);
       db.prepare('UPDATE agent_schedules SET next_run_at=?,updated_at=? WHERE id=?').run(Date.now()+schedule.interval_ms,Date.now(),schedule.id);
-      void runAgent({db,ai,cfg,agentId:schedule.agent_id,request:schedule.prompt})
+      void runAgent({db,ai:getAi(),cfg:getCfg(),agentId:schedule.agent_id,request:schedule.prompt})
         .then(run=>db.prepare('UPDATE agent_schedules SET last_run_id=?,updated_at=? WHERE id=?').run(run.id,Date.now(),schedule.id))
         .catch(()=>{}).finally(()=>inFlight.delete(schedule.id));
     }
