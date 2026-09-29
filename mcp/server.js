@@ -2,12 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { openDb } from '../server/db.js';
+import { loadConfig } from '../server/config.js';
+import { createAiRuntime } from '../server/ai/index.js';
 import { searchKnowledge, searchTranscript, getMeetingContext } from '../server/rag.js';
 import { listAgents, runAgent, listInbox, listApprovals, resolveApproval, listSchedules, searchBrain, listBrainMemories } from '../server/agents.js';
 
 const PROTOCOL_VERSION = '2026-07-28';
 const args = process.argv.slice(2);
 const dbFlag = args.indexOf('--db');
+const configFlag = args.indexOf('--config');
 const dbPath = dbFlag >= 0 && args[dbFlag + 1]
   ? path.resolve(args[dbFlag + 1])
   : path.resolve(process.env.OLI_DB_PATH || 'data/oli.db');
@@ -101,7 +104,7 @@ function handleTool(name, input = {}) {
       return runAgent({
         db,
         ai: globalThis.__oliAiRuntime,
-        cfg: globalThis.__oliAgentConfig || { aiTimeoutMs: 15000, obsidianVaultPath: '', crmWebhookUrl: '', crmWebhookToken: '' },
+        cfg,
         agentId: String(input.agentId || ''),
         request: String(input.request || ''),
         meetingId: input.meetingId ? String(input.meetingId) : null
@@ -184,6 +187,7 @@ input.on('line', (line) => {
 
 function shutdown() {
   input.close();
+  ai.close();
   db.close();
 }
 
