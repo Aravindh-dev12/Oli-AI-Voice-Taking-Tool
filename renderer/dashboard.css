@@ -39,3 +39,15 @@ ul#klist li div span { color: var(--mut); font-size: 12.5px; }
 .mdfield b { display:block; font:10px ui-monospace,monospace; color:var(--mut); text-transform:uppercase; margin-bottom:3px; }
 .mdfield span { display:block; font-size:12.5px; white-space:pre-wrap; }
 @media (max-width: 820px) { .split { grid-template-columns:1fr; } .mdgrid { grid-template-columns:1fr; } }
+
+
+#approvalList, #inboxList, #brainList, #scheduleList { list-style: none; padding: 0; margin: 0 0 14px; }
+#approvalList li, #inboxList li, #brainList li, #scheduleList li {
+  border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+  display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; background: var(--panel);
+}
+#approvalList li > div:first-child, #inboxList li > div:first-child, #brainList li > div:first-child { flex: 1; }
+#inboxList li span, #brainList li span, #scheduleList li span { color: var(--mut); font-size: 12.5px; white-space: pre-wrap; }
+#approvalList .row { margin: 0; }
+#scheduleList button { flex: none; }
+#agentEditor .row select { min-width: 150px; }
