@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "rm -rf .vercel-static && mkdir -p .vercel-static && cp -R renderer/. .vercel-static/",
+  "buildCommand": "rm -rf .vercel-static && mkdir -p .vercel-static && cp -R public/. .vercel-static/",
   "outputDirectory": ".vercel-static",
   "cleanUrls": false,
   "rewrites": [
