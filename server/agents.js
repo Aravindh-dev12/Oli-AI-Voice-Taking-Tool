@@ -4,6 +4,7 @@ import { getMeetingContext } from './rag.js';
 import { initBrainStore, upsertBrainMemory, searchBrain, listBrainMemories, deleteBrainMemory, serializeBrainContext } from './brain.js';
 import { syncMeetingToObsidian } from './obsidian.js';
 import { syncMeetingToCrm } from './crm.js';
+import { initSkillsStore, getSkill } from './skills.js';
 
 const PERMISSIONS = new Set(['read_only', 'ask_first', 'always_allow']);
 const ACTIONS = new Set(['brain_memory_upsert', 'create_commitment', 'followup_draft', 'obsidian_sync', 'crm_sync']);
@@ -56,6 +57,7 @@ function initAgentStore(db) {
       action_type TEXT, payload_json TEXT NOT NULL, created_at INTEGER NOT NULL
     );
   `);
+  initSkillsStore(db);
   const insert = db.prepare('INSERT OR IGNORE INTO agent_profiles(id,name,description,system_prompt,permission_mode,allowed_actions_json,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?,1,?,?)');
   const now=Date.now();
   const tx=db.transaction(()=>{ for(const a of DEFAULT_AGENTS) insert.run(a.id,a.name,a.description,a.systemPrompt,a.permissionMode,JSON.stringify(a.allowedActions),now,now); });
@@ -182,8 +184,10 @@ function parseAgentResponse(raw,agentId,meetingId) {
   }
 }
 
-async function runAgent({db,ai,cfg,agentId,request,meetingId=null}) {
-  const agent=getAgent(db,agentId); const prompt=clampText(request,4000);
+async function runAgent({db,ai,cfg,agentId,request,meetingId=null,skillId=null}) {
+  const agent=getAgent(db,agentId);
+  const skill=skillId ? getSkill(db, skillId) : null;
+  const prompt=clampText(request,4000);
   if(!prompt) throw new Error('request is required.');
   const runId=randomUUID();
   db.prepare('INSERT INTO agent_runs(id,agent_id,meeting_id,request,status,created_at) VALUES(?,?,?,?,?,?)')
@@ -191,7 +195,7 @@ async function runAgent({db,ai,cfg,agentId,request,meetingId=null}) {
   try {
     const context=buildAgentContext(db,prompt,meetingId);
     const contract='Return only valid JSON. Schema: {"answer":"string","memories":[{"kind":"person|project|decision|company|topic|meeting|commitment|fact","title":"string","content":"string","tags":["string"],"confidence":0.0}],"actions":[{"type":"brain_memory_upsert|create_commitment|followup_draft|obsidian_sync|crm_sync","reason":"string","payload":{}}],"inbox":{"title":"string","body":"string"}}. Do not invent evidence. Do not claim an action happened unless it is represented in supplied context.';
-    const raw=await ai.copilot(agent.system_prompt+'\n\n'+contract,'User request:\n'+prompt+'\n\nLocal context:\n'+JSON.stringify(context).slice(0,42000));
+    const raw=await ai.copilot(agent.system_prompt + (skill ? '\n\nSkill: ' + skill.prompt : '') + '\n\n' + contract,'User request:\n'+prompt+'\n\nLocal context:\n'+JSON.stringify(context).slice(0,42000));
     const parsed=parseAgentResponse(raw,agent.id,meetingId);
     for(const memory of parsed.memories){
       if(agent.allowedActions.includes('brain_memory_upsert')) { upsertBrainMemory(db,memory); audit(db,runId,'brain_memory_written','brain_memory_upsert',{title:memory.title,kind:memory.kind}); }
@@ -202,6 +206,10 @@ async function runAgent({db,ai,cfg,agentId,request,meetingId=null}) {
       if(action.type==='followup_draft'){
         const result=await executeAction({db,cfg,actionType:action.type,payload:action.payload,agentRunId:runId});
         audit(db,runId,'action_executed',action.type,{inboxId:result.id}); continue;
+      }
+      if(action.type === 'crm_sync') {
+        createApproval(db,{agentRunId:runId,actionType:action.type,payload:action.payload,reason:action.reason + ' External CRM writes always require explicit approval.'});
+        continue;
       }
       if(agent.permission_mode==='always_allow'){
         const result=await executeAction({db,cfg,actionType:action.type,payload:action.payload,agentRunId:runId});
