@@ -2,7 +2,7 @@
   "version": 2,
   "cleanUrls": false,
   "rewrites": [
-    { "source": "/", "destination": "/dashboard.html" }
+    { "source": "/", "destination": "/renderer/dashboard.html" }
   ],
   "headers": [
     {
