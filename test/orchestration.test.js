@@ -79,6 +79,8 @@ test('multiple local Markdown sources can sync independently and be removed clea
 
     const deleted = deleteSource(db, 'product');
     assert.equal(deleted.removedEntries, 1);
+    assert.equal(listRegisteredSources(db).length, 1);
+    deleteSource(db, 'sales');
     assert.equal(listRegisteredSources(db).length, 0);
   } finally {
     db.close();
