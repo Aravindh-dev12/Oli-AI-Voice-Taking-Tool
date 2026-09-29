@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, '01-*', '02-*', '03-*', '04-*', '05-*', '06-*', '07-*', '08-*', '09-*', '10-*', '11-*', '12-*', '13-*', '14-*']
+    branches: [main, '01-*', '02-*', '03-*', '04-*', '05-*', '06-*', '07-*', '08-*', '09-*', '10-*', '11-*', '12-*', '13-*', '14-*', '15-*']
   pull_request:
     branches: [main]
 
@@ -28,7 +28,7 @@ jobs:
         run: npm test
 
   native-macos:
-    if: startsWith(github.head_ref, '09-') || startsWith(github.head_ref, '10-') || startsWith(github.head_ref, '11-') || startsWith(github.head_ref, '12-') || startsWith(github.head_ref, '13-') || startsWith(github.head_ref, '14-') || github.ref == 'refs/heads/main'
+    if: startsWith(github.head_ref, '09-') || startsWith(github.head_ref, '10-') || startsWith(github.head_ref, '11-') || startsWith(github.head_ref, '12-') || startsWith(github.head_ref, '13-') || startsWith(github.head_ref, '14-') || startsWith(github.head_ref, '15-') || github.ref == 'refs/heads/main'
     runs-on: macos-latest
     timeout-minutes: 35
     steps:
