@@ -15,6 +15,7 @@ Oli is a tray-resident desktop meeting copilot designed around a black notch-sty
 - **Local integrations:** Markdown/Notion-export indexing, Obsidian meeting-note sync, and an opt-in generic CRM webhook for completed-meeting data.
 - **Privacy controls:** retention, cleanup, deletion, deterministic JSON export, and provider-mode visibility.
 - **Agent workbench:** Turnstone-inspired shared local Brain, focused agents, Read Only / Ask First / Always Allow permissions, approval queue, Inbox, and local interval schedules.
+- **Agent orchestration:** reusable Skills, local source registry, agent Families, durable Handoffs, retryable job queue, and parallel batches.
 - **Quality tooling:** Node tests, Rust unit tests, syntax checks, structured redacted logs, GitHub Actions CI, and native release workflows.
 
 ## Architecture
@@ -238,3 +239,17 @@ See `docs/local-llm.md` for model/runtime details and `docs/local-ai.md` for the
 ## Native macOS HUD
 
 On macOS, `OliHUD` is the native SwiftUI/AppKit visual shell for the notch. It is non-activating, content-protected, and receives live transcript/whisper state from the Electron meeting engine. Build it with `npm run build:native:mac`. See `docs/native-hud.md` for the IPC/fallback details.
+
+
+## Production agent orchestration
+
+Oli 1.5 extends the local agent layer with the additional workflows now documented by Turnstone's public materials:
+
+- Reusable local Skills for repeatable meeting/research workflows.
+- A registry for multiple Markdown knowledge roots, with per-source sync and enable/disable state.
+- Agent Families for grouping specialists around a workstream.
+- Durable Handoffs between agents.
+- A SQLite-backed job queue with leases, bounded retries and backoff.
+- Parallel batches capped at eight child jobs with an aggregated local Inbox result.
+
+The design remains sovereign: these primitives operate over Oli's existing local Brain and knowledge store. External CRM writes remain approval-gated.
