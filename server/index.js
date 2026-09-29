@@ -7,7 +7,7 @@ import { loadConfig, saveConfig, redact } from './config.js';
 import { parseCaptureSequence, parseCaptureSource, validateWavPayload } from './audio.js';
 import { createAiRuntime } from './ai/index.js';
 import { createLogger } from './logger.js';
-import { syncKnowledge, listKnowledgeSources } from './knowledge.js';
+import { syncKnowledge, listKnowledgeSources, initSourceRegistry, listRegisteredSources, registerSource, setSourceEnabled, deleteSource, syncRegisteredSource, syncAllRegisteredSources } from './knowledge.js';
 import { syncMeetingToObsidian } from './obsidian.js';
 import { createVectorStore } from './vector.js';
 import {
@@ -16,6 +16,11 @@ import {
   updateSchedule, deleteSchedule, startAgentScheduler, searchBrain, listBrainMemories,
   deleteBrainMemory, seedMeetingBrain
 } from './agents.js';
+import { initSkillsStore, listSkills, upsertSkill, setSkillEnabled } from './skills.js';
+import {
+  initOrchestrationStore, listFamilies, setFamilyMembers, enqueueJob, listJobs, getJob, cancelJob,
+  retryJob, createHandoff, listHandoffs, createBatch, listBatches, getBatch, startJobScheduler
+} from './orchestration.js';
 import { purgeBrainForMeeting, upsertBrainMemory } from './brain.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -63,13 +68,19 @@ export function createServer({ dbPath, configPath }) {
     timeoutMs: cfg.aiTimeoutMs
   });
   applyRetentionPolicy(db, cfg.retentionDays);
+  initSourceRegistry(db);
   if (cfg.knowledgeDir) {
-    try { syncKnowledge(db, cfg.knowledgeDir); } catch (error) { logger.warn('knowledge sync failed', { reason: error.message }); }
+    try {
+      registerSource(db, { id: 'default-knowledge', name: 'Default knowledge folder', rootPath: cfg.knowledgeDir });
+      syncRegisteredSource(db, 'default-knowledge');
+    } catch (error) { logger.warn('knowledge sync failed', { reason: error.message }); }
   }
   if (vector.enabled && cfg.localEmbeddingUrl) void vector.reindexAll().catch((error) => logger.warn('vector reindex failed', { reason: error.message }));
   initAgentStore(db);
+  initSkillsStore(db);
+  initOrchestrationStore(db);
   const clients = new Map();
-  const stopAgentScheduler = startAgentScheduler({
+  const stopAgentScheduler = startJobScheduler({
     db,
     getAi: () => ai,
     getCfg: () => cfg
@@ -178,6 +189,109 @@ export function createServer({ dbPath, configPath }) {
     }
     if (vector.enabled && cfg.localEmbeddingUrl) void vector.reindexAll().catch((error) => logger.warn('vector reindex failed', { reason: error.message }));
     res.json(redact(cfg));
+  });
+
+  app.get('/api/skills', (_, res) => res.json(listSkills(db)));
+
+  app.post('/api/skills', (req, res) => {
+    try { return res.status(201).json(upsertSkill(db, req.body || {})); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.patch('/api/skills/:id', (req, res) => {
+    try { return res.json(setSkillEnabled(db, req.params.id, req.body?.enabled)); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.get('/api/sources', (_, res) => res.json(listRegisteredSources(db)));
+
+  app.post('/api/sources', (req, res) => {
+    try { return res.status(201).json(registerSource(db, req.body || {})); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.post('/api/sources/:id/sync', (req, res) => {
+    try { return res.json(syncRegisteredSource(db, req.params.id)); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.post('/api/sources/sync-all', (_, res) => res.json(syncAllRegisteredSources(db)));
+
+  app.patch('/api/sources/:id', (req, res) => {
+    try { return res.json(setSourceEnabled(db, req.params.id, req.body?.enabled)); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.delete('/api/sources/:id', (req, res) => {
+    try { return res.json(deleteSource(db, req.params.id)); }
+    catch (error) { return res.status(404).json({ error: error.message }); }
+  });
+
+  app.get('/api/agent/families', (_, res) => res.json(listFamilies(db)));
+
+  app.patch('/api/agent/families/:id', (req, res) => {
+    try { return res.json(setFamilyMembers(db, req.params.id, req.body?.agentIds || [])); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.get('/api/agent/jobs', (req, res) => res.json(listJobs(db, { status: String(req.query.status || ''), limit: req.query.limit })));
+
+  app.post('/api/agent/jobs', (req, res) => {
+    try {
+      const job = enqueueJob(db, {
+        kind: 'agent_run',
+        payload: {
+          agentId: String(req.body?.agentId || ''),
+          request: String(req.body?.request || ''),
+          meetingId: req.body?.meetingId || null,
+          skillId: req.body?.skillId || null
+        },
+        idempotencyKey: req.body?.idempotencyKey || null,
+        maxAttempts: req.body?.maxAttempts
+      });
+      return res.status(201).json(job);
+    } catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.get('/api/agent/jobs/:id', (req, res) => {
+    try { return res.json(getJob(db, req.params.id)); }
+    catch (error) { return res.status(404).json({ error: error.message }); }
+  });
+
+  app.post('/api/agent/jobs/:id/retry', (req, res) => {
+    try { return res.json(retryJob(db, req.params.id)); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.post('/api/agent/jobs/:id/cancel', (req, res) => {
+    try { return res.json(cancelJob(db, req.params.id)); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.get('/api/agent/handoffs', (req, res) => res.json(listHandoffs(db, String(req.query.status || ''), req.query.limit)));
+
+  app.post('/api/agent/handoffs', (req, res) => {
+    try {
+      return res.status(201).json(createHandoff(db, {
+        fromAgentId: req.body?.fromAgentId || null,
+        toAgentId: req.body?.toAgentId,
+        parentRunId: req.body?.parentRunId || null,
+        request: req.body?.request,
+        context: req.body?.context || {}
+      }));
+    } catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.get('/api/agent/batches', (req, res) => res.json(listBatches(req.query.limit)));
+
+  app.get('/api/agent/batches/:id', (req, res) => {
+    try { return res.json(getBatch(db, req.params.id)); }
+    catch (error) { return res.status(404).json({ error: error.message }); }
+  });
+
+  app.post('/api/agent/batches', (req, res) => {
+    try { return res.status(201).json(createBatch(db, { title: req.body?.title, items: req.body?.items || [] })); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
   });
 
   app.get('/api/agents', (_, res) => res.json(listAgents(db)));
@@ -451,14 +565,21 @@ export function createServer({ dbPath, configPath }) {
       logger.warn('meeting Brain seed failed', { meetingId: id, reason: error.message });
     }
     if (segments.length && ai.status().ready) {
-      void runAgent({
-        db,
-        ai,
-        cfg,
-        agentId: 'meeting-analyst',
-        meetingId: id,
-        request: 'Review this completed meeting. Store only durable, evidence-backed people, projects, decisions, risks, facts and commitments in the shared Brain. Create a concise review item for the Inbox. Do not propose external side effects.'
-      }).catch((error) => logger.warn('meeting analyst failed', { meetingId: id, reason: error.message }));
+      try {
+        const job = enqueueJob(db, {
+          kind: 'agent_run',
+          payload: {
+            agentId: 'meeting-analyst',
+            meetingId: id,
+            request: 'Review this completed meeting. Store only durable, evidence-backed people, projects, decisions, risks, facts and commitments in the shared Brain. Create a concise review item for the Inbox. Do not propose external side effects.'
+          },
+          idempotencyKey: 'meeting-analyst:' + id,
+          maxAttempts: 3
+        });
+        logger.info('meeting analyst job queued', { meetingId: id, jobId: job.id });
+      } catch (error) {
+        logger.warn('meeting analyst queue failed', { meetingId: id, reason: error.message });
+      }
     }
     let obsidianPath = null;
     let crmSynced = false;
