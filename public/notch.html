@@ -1,0 +1,56 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Oli</title>
+<link rel="stylesheet" href="notch.css" />
+</head>
+<body>
+  <div id="app" data-state="pill" data-active="false">
+    <section class="view view-pill">
+      <span class="ring" id="statusRing" title="Oli status"></span>
+      <span class="meter" id="meter" aria-hidden="true"><i></i></span>
+      <span class="channels" aria-label="Audio channel status">
+        <span class="channel" id="channelThem"><i></i>SYS</span>
+        <span class="channel" id="channelYou"><i></i>MIC</span>
+      </span>
+      <span class="label" id="pillLabel">OLI</span>
+      <span class="count" id="pillCount"></span>
+    </section>
+
+    <section class="view view-flare">
+      <span class="mark">▲</span>
+      <span class="tip" id="flareTip"></span>
+    </section>
+
+    <section class="view view-shelf">
+      <header>
+        <span class="eyebrow">OLI</span>
+        <span class="mtitle" id="shelfTitle">No meeting running</span>
+        <span class="spacer"></span>
+        <button class="ghost" id="btnDash">Dashboard</button>
+        <button class="ghost strong" id="btnToggle">Start</button>
+      </header>
+      <div class="body">
+        <div class="col transcript" id="transcript">
+          <p class="empty" id="transcriptEmpty">Click Start, then share your meeting tab or screen with audio, to see the live transcript here.</p>
+        </div>
+        <div class="col intel">
+          <h4>In-flight intelligence</h4>
+          <div id="whispers" class="whispers"></div>
+          <h4>Agenda</h4>
+          <div id="agenda" class="agenda"></div>
+          <div class="agenda-add"><input id="agendaInput" maxlength="300" placeholder="Add agenda item"/><button id="agendaAdd" class="ghost">+</button></div>
+          <h4>Talk time</h4>
+          <div class="airbar"><i id="airFill"></i></div>
+          <div class="airline" id="airLine">You 0% · Them 0%</div>
+          <p class="nudge" id="nudge"></p>
+        </div>
+      </div>
+      <footer id="footer">Add battlecards and pricing sheets in the Dashboard's knowledge base so Oli has something to whisper from.</footer>
+    </section>
+  </div>
+  <script type="module" src="notch.js"></script>
+</body>
+</html>

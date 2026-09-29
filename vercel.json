@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "mkdir -p public && cp renderer/dashboard.html public/index.html && cp renderer/dashboard.css public/dashboard.css && cp renderer/dashboard.js public/dashboard.js && cp renderer/notch.html public/notch.html && cp renderer/notch.css public/notch.css && cp renderer/notch.js public/notch.js",
+  "buildCommand": "npm run build:web",
   "outputDirectory": "public",
   "cleanUrls": false,
   "rewrites": [

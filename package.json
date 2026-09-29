@@ -13,6 +13,7 @@
     "dist:mac": "npm run build:native:mac && electron-builder --mac",
     "dist:win": "electron-builder --win",
     "mcp": "node mcp/server.js",
+    "build:web": "mkdir -p public && cp renderer/dashboard.html public/index.html && cp renderer/dashboard.css public/dashboard.css && cp renderer/dashboard.js public/dashboard.js && cp renderer/notch.html public/notch.html && cp renderer/notch.css public/notch.css && cp renderer/notch.js public/notch.js",
     "build:whisper:mac": "cargo build --release --manifest-path native/rust/whisper-core/Cargo.toml --features metal,coreml",
     "build:whisper": "cargo build --release --manifest-path native/rust/whisper-core/Cargo.toml",
     "setup:local-llm": "bash scripts/setup-local-llm.sh",
