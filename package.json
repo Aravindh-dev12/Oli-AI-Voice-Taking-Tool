@@ -1,8 +1,8 @@
 {
   "name": "oli",
   "productName": "Oli",
-  "version": "1.4.0",
-  "description": "Sovereign AI meeting copilot that lives in a notch-style overlay on Mac and Windows.",
+  "version": "1.5.0",
+  "description": "Sovereign AI meeting copilot with local meeting intelligence and agent orchestration.",
   "main": "electron/main.js",
   "type": "module",
   "scripts": {
