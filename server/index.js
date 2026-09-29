@@ -124,7 +124,9 @@ export function createServer({ dbPath, configPath }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '1mb' }));
-  app.use(express.static(path.join(__dirname, '..', 'renderer')));
+  const rendererDir = path.join(__dirname, '..', 'renderer');
+  app.use(express.static(rendererDir));
+  app.get('/', (_req, res) => res.sendFile(path.join(rendererDir, 'dashboard.html')));
 
   app.get('/api/health', (_, res) => {
     const status = ai.status();
