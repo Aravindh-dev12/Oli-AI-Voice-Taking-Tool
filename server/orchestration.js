@@ -377,7 +377,8 @@ function enqueueDueSchedules(db) {
 function startJobScheduler({ db, getAi, getCfg, tickMs = 1000, concurrency = 3 }) {
   const running = new Set();
   const timer = setInterval(() => {
-    enqueueDueSchedules(db);\n    while (running.size < concurrency) {
+    enqueueDueSchedules(db);
+    while (running.size < concurrency) {
       const job = claimJob(db);
       if (!job) break;
       running.add(job.id);
