@@ -1,9 +1,7 @@
-import { randomUUID } from 'node:crypto';
-
 const KINDS = new Set(['person', 'project', 'decision', 'company', 'topic', 'meeting', 'commitment', 'fact']);
 
 function clean(value, max=4000) {
-  return String(value ?? '').replace(/\\s+/g, ' ').trim().slice(0, max);
+  return String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 
 function initBrainStore(db) {
@@ -116,7 +114,7 @@ function seedMeetingBrain(db, meetingId) {
       meeting.summary || 'Summary unavailable.',
       'Meeting ID: ' + meeting.id,
       meeting.ended_at ? 'Ended: ' + new Date(meeting.ended_at).toISOString() : ''
-    ].filter(Boolean).join('\\n'),
+    ].filter(Boolean).join('\n'),
     sourceType: 'meeting',
     sourceId: meeting.id,
     tags: ['meeting', 'oli']
@@ -143,7 +141,7 @@ function seedMeetingBrain(db, meetingId) {
     upsertBrainMemory(db, {
       kind: 'commitment',
       title: action.task,
-      content: 'Assignee: ' + action.assignee + '\\nStatus: ' + action.status + '\\nMeeting: ' + meeting.id,
+      content: 'Assignee: ' + action.assignee + '\nStatus: ' + action.status + '\nMeeting: ' + meeting.id,
       sourceType: 'meeting',
       sourceId: meeting.id + ':' + action.task,
       tags: ['commitment', 'follow-up']
@@ -187,6 +185,7 @@ export {
   initBrainStore,
   upsertBrainMemory,
   deleteBrainMemory,
+  purgeBrainForMeeting,
   listBrainMemories,
   searchBrain,
   seedMeetingBrain,
