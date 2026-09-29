@@ -57,3 +57,10 @@ Pass both the database and config paths when running agent actions so MCP uses t
     npm run mcp -- --db "/absolute/path/to/oli.db" --config "/absolute/path/to/config.json"
 
 Approval-gated actions execute only after oli_resolve_approval with decision approved.
+
+
+### Orchestration tools
+
+Additional local tools include oli_list_skills, oli_list_sources, oli_sync_source, oli_list_families, oli_list_jobs, oli_get_job, oli_retry_job, oli_cancel_job, oli_list_handoffs, oli_create_handoff, oli_get_batch, and oli_create_batch.
+
+These tools operate on the same local SQLite state as the desktop application. They do not create a remote Turnstone dependency.
