@@ -5,7 +5,7 @@ import { openDb } from '../server/db.js';
 import { loadConfig } from '../server/config.js';
 import { createAiRuntime } from '../server/ai/index.js';
 import { searchKnowledge, searchTranscript, getMeetingContext } from '../server/rag.js';
-import { listAgents, runAgent, listInbox, listApprovals, resolveApproval, listSchedules, searchBrain, listBrainMemories } from '../server/agents.js';
+import { initAgentStore, listAgents, runAgent, listInbox, listApprovals, resolveApproval, listSchedules, searchBrain } from '../server/agents.js';
 
 const PROTOCOL_VERSION = '2026-07-28';
 const args = process.argv.slice(2);
@@ -17,6 +17,7 @@ const dbPath = dbFlag >= 0 && args[dbFlag + 1]
 
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = openDb(dbPath);
+initAgentStore(db);
 
 const tools = [
   {
