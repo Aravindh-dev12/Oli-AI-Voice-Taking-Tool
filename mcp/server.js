@@ -76,7 +76,8 @@ const tools = [
       properties: {
         agentId: { type: 'string' },
         request: { type: 'string', maxLength: 4000 },
-        meetingId: { type: 'string' }
+        meetingId: { type: 'string' },
+        skillId: { type: 'string' }
       }
     }
   },
@@ -245,7 +246,8 @@ function handleTool(name, input = {}) {
         cfg,
         agentId: String(input.agentId || ''),
         request: String(input.request || ''),
-        meetingId: input.meetingId ? String(input.meetingId) : null
+        meetingId: input.meetingId ? String(input.meetingId) : null,
+        skillId: input.skillId ? String(input.skillId) : null
       });
 
     case 'oli_search_brain':
