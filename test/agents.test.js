@@ -8,7 +8,7 @@ import {
   initAgentStore, runAgent, listApprovals, resolveApproval,
   listInbox, createSchedule, listSchedules, updateAgent, searchBrain
 } from '../server/agents.js';
-import { seedMeetingBrain, purgeBrainForMeeting } from '../server/brain.js';
+import { seedMeetingBrain, purgeBrainForMeeting, upsertBrainMemory } from '../server/brain.js';
 
 function tempDb() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'oli-agent-'));
