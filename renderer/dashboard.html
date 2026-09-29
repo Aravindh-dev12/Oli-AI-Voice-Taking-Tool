@@ -8,13 +8,14 @@
 </head>
 <body>
 <header>
-  <h1>Oli</h1>
+  <div class="brand"><span class="brand-mark">O</span><div><h1>Oli</h1><span class="brand-subtitle">Sovereign intelligence workspace</span></div></div>
+  <div class="system-status"><span class="status-dot"></span>LOCAL CORE <span class="version">v1.5</span></div>
   <nav>
-    <button data-t="hist" class="on">History</button>
-    <button data-t="agents">Agents</button>
-    <button data-t="kb">Knowledge base</button>
-    <button data-t="settings">AI settings</button>
-    <button data-t="privacy">Privacy &amp; data</button>
+    <button data-t="hist" class="on">Sessions</button>
+    <button data-t="agents">Workspace</button>
+    <button data-t="kb">Knowledge</button>
+    <button data-t="settings">System</button>
+    <button data-t="privacy">Privacy</button>
   </nav>
 </header>
 
@@ -37,7 +38,16 @@
 
 
 <main id="agents">
-  <p class="hint">Turnstone-inspired workflow layer adapted for Oli: one local Brain shared by focused agents, explicit permission modes, reviewable approvals, an Inbox, and local schedules. No new cloud service is introduced.</p>
+  <section class="workspace-hero">
+    <div>
+      <span class="eyebrow">OLI / GENERAL INTELLIGENCE</span>
+      <h2>One local Brain.<br><em>Every kind of work.</em></h2>
+      <p>Research, remember, reason and act across your files, sessions and workflows — without sending your private context away.</p>
+    </div>
+    <div class="hero-orbit" aria-hidden="true"><span class="orbit-core">BRAIN</span><span class="orbit-label label-one">RESEARCH</span><span class="orbit-label label-two">MEMORY</span><span class="orbit-label label-three">ACTION</span></div>
+  </section>
+  <div class="workspace-strip"><span><b>06</b> built-in skills</span><span><b>02</b> agent families</span><span><b>08</b> parallel workers</span><span><b>0 B</b> cloud egress</span></div>
+  <p class="hint">A local workflow layer: one Brain shared by focused agents, explicit permission modes, reviewable approvals, an Inbox, and durable schedules.</p>
   <div class="split">
     <div class="pane">
       <h3>Agents</h3>
