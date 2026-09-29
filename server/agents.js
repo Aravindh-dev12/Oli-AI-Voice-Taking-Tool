@@ -303,5 +303,5 @@ export {
   PERMISSIONS,ACTIONS,initAgentStore,listAgents,getAgent,updateAgent,runAgent,
   listInbox,markInbox,listApprovals,createApproval,resolveApproval,listSchedules,
   createSchedule,updateSchedule,deleteSchedule,startAgentScheduler,searchBrain,
-  listBrainMemories,deleteBrainMemory,seedMeetingBrain
+  listBrainMemories,deleteBrainMemory
 };
