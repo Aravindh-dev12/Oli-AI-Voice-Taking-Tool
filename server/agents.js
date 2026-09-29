@@ -108,9 +108,12 @@ function audit(db,agentRunId,eventType,actionType,payload) {
 }
 function createApproval(db,{agentRunId=null,actionType,payload,reason}) {
   if(!ACTIONS.has(String(actionType))) throw new Error('Unsupported approval action.');
+  const stablePayload = JSON.stringify(payload || {});
+  const existing = db.prepare('SELECT * FROM agent_approvals WHERE action_type=? AND payload_json=? AND status="pending" LIMIT 1').get(String(actionType), stablePayload);
+  if (existing) return existing;
   const id=randomUUID();
   db.prepare('INSERT INTO agent_approvals(id,agent_run_id,action_type,payload_json,reason,status,created_at) VALUES(?,?,?,?,?,"pending",?)')
-    .run(id,agentRunId,String(actionType),JSON.stringify(payload||{}),clampText(reason,1000),Date.now());
+    .run(id,agentRunId,String(actionType),stablePayload,clampText(reason,1000),Date.now());
   audit(db,agentRunId,'approval_requested',String(actionType),{approvalId:id,reason:clampText(reason,1000)});
   return db.prepare('SELECT * FROM agent_approvals WHERE id=?').get(id);
 }
@@ -123,13 +126,19 @@ async function executeAction({db,cfg,actionType,payload,agentRunId}) {
       if(!meetingId||!db.prepare('SELECT 1 FROM meetings WHERE id=?').get(meetingId)) throw new Error('Meeting not found for commitment.');
       const task=clampText(payload.task,500); if(!task) throw new Error('Commitment task is required.');
       const assignee=clampText(payload.assignee||'Unassigned',120);
+      const existing=db.prepare('SELECT id,meeting_id,task,assignee,status FROM actions WHERE meeting_id=? AND task=? AND assignee=? ORDER BY id DESC LIMIT 1').get(meetingId,task,assignee);
+      if (existing) return existing;
       const r=db.prepare('INSERT INTO actions(meeting_id,task,assignee,status) VALUES(?,?,?,"pending")').run(meetingId,task,assignee);
       return db.prepare('SELECT id,meeting_id,task,assignee,status FROM actions WHERE id=?').get(r.lastInsertRowid);
     }
     case 'followup_draft': {
+      const title=clampText(payload.title||'Follow-up draft',240);
+      const body=clampText(payload.body,12000);
+      const existing=db.prepare('SELECT * FROM agent_inbox WHERE kind="followup-draft" AND title=? AND body=? ORDER BY created_at DESC LIMIT 1').get(title,body);
+      if (existing) return existing;
       const id=randomUUID();
       db.prepare('INSERT INTO agent_inbox(id,agent_run_id,kind,title,body,status,created_at) VALUES(?,?,?,?,?,"unread",?)')
-        .run(id,agentRunId||null,'followup-draft',clampText(payload.title||'Follow-up draft',240),clampText(payload.body,12000),Date.now());
+        .run(id,agentRunId||null,'followup-draft',title,body,Date.now());
       return db.prepare('SELECT * FROM agent_inbox WHERE id=?').get(id);
     }
     case 'obsidian_sync': {
@@ -236,21 +245,23 @@ async function runAgent({db,ai,cfg,agentId,request,meetingId=null,skillId=null})
 async function resolveApproval({db,cfg,approvalId,decision}) {
   const approval=db.prepare('SELECT * FROM agent_approvals WHERE id=?').get(String(approvalId));
   if(!approval) throw new Error('Approval not found.');
-  if(approval.status!=='pending') throw new Error('Approval is already resolved.');
   if(!['approved','rejected'].includes(decision)) throw new Error('decision must be approved or rejected.');
   if(decision==='rejected'){
-    db.prepare('UPDATE agent_approvals SET status="rejected",resolved_at=?,resolution=? WHERE id=?').run(Date.now(),'rejected',approval.id);
+    const claimed=db.prepare('UPDATE agent_approvals SET status="rejected",resolved_at=?,resolution=? WHERE id=? AND status="pending"').run(Date.now(),'rejected',approval.id);
+    if(!claimed.changes) throw new Error('Approval is already resolved.');
     audit(db,approval.agent_run_id,'approval_rejected',approval.action_type,{approvalId:approval.id});
     return db.prepare('SELECT * FROM agent_approvals WHERE id=?').get(approval.id);
   }
+  const claimed=db.prepare('UPDATE agent_approvals SET status="approved",resolved_at=?,resolution=? WHERE id=? AND status="pending"').run(Date.now(),'executing',approval.id);
+  if(!claimed.changes) throw new Error('Approval is already resolved.');
   const payload=JSON.parse(approval.payload_json||'{}');
   try {
     const result=await executeAction({db,cfg,actionType:approval.action_type,payload,agentRunId:approval.agent_run_id});
-    db.prepare('UPDATE agent_approvals SET status="approved",resolved_at=?,resolution=? WHERE id=?').run(Date.now(),JSON.stringify({ok:true,result}),approval.id);
+    db.prepare('UPDATE agent_approvals SET resolution=? WHERE id=?').run(JSON.stringify({ok:true,result}),approval.id);
     audit(db,approval.agent_run_id,'approval_executed',approval.action_type,{approvalId:approval.id,result});
     return db.prepare('SELECT * FROM agent_approvals WHERE id=?').get(approval.id);
   } catch(error) {
-    db.prepare('UPDATE agent_approvals SET status="failed",resolved_at=?,resolution=? WHERE id=?').run(Date.now(),clampText(error.message,2000),approval.id);
+    db.prepare('UPDATE agent_approvals SET status="failed",resolution=? WHERE id=?').run(clampText(error.message,2000),approval.id);
     audit(db,approval.agent_run_id,'approval_failed',approval.action_type,{approvalId:approval.id,reason:clampText(error.message,2000)});
     throw error;
   }
