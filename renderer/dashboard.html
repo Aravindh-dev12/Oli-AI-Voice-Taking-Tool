@@ -11,6 +11,7 @@
   <h1>Oli</h1>
   <nav>
     <button data-t="hist" class="on">History</button>
+    <button data-t="agents">Agents</button>
     <button data-t="kb">Knowledge base</button>
     <button data-t="settings">AI settings</button>
     <button data-t="privacy">Privacy &amp; data</button>
@@ -33,6 +34,41 @@
   </div>
 </main>
 
+
+
+<main id="agents">
+  <p class="hint">Turnstone-inspired workflow layer adapted for Oli: one local Brain shared by focused agents, explicit permission modes, reviewable approvals, an Inbox, and local schedules. No new cloud service is introduced.</p>
+  <div class="split">
+    <div class="pane">
+      <h3>Agents</h3>
+      <ul id="alist"></ul>
+    </div>
+    <div class="pane wide">
+      <div id="agentEditor"></div>
+
+      <h3>Run agent</h3>
+      <div class="row"><input id="agentRequest" maxlength="4000" placeholder="Ask the selected agent to research, summarize or plan work…"/></div>
+      <div class="row"><label>Meeting ID</label><input id="agentMeetingId" placeholder="Optional completed meeting UUID"/></div>
+      <div class="row"><button id="runAgent" class="primary">Run</button><span id="agentMsg" class="hint"></span></div>
+
+      <h3>Approval queue</h3>
+      <ul id="approvalList"></ul>
+
+      <h3>Inbox</h3>
+      <ul id="inboxList"></ul>
+
+      <h3>Shared Brain</h3>
+      <div class="row"><input id="brainSearch" maxlength="500" placeholder="Search people, projects, decisions, facts…"/><button id="brainSearchBtn">Search</button></div>
+      <ul id="brainList"></ul>
+
+      <h3>Schedules</h3>
+      <div class="row"><label>Agent</label><select id="scheduleAgent"></select></div>
+      <div class="row"><label>Every (minutes)</label><input id="scheduleMinutes" type="number" min="1" max="10080" value="60"/></div>
+      <div class="row"><input id="schedulePrompt" maxlength="4000" placeholder="Recurring prompt…"/><button id="addSchedule" class="primary">Schedule</button></div>
+      <ul id="scheduleList"></ul>
+    </div>
+  </div>
+</main>
 <main id="kb">
   <p class="hint">Whispers are grounded only in trusted entries stored locally here.</p>
   <div class="row"><input id="kt" maxlength="200" placeholder="Title — e.g. Competitor X pricing" /></div>
