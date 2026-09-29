@@ -24,6 +24,7 @@ function tab(name) {
   if (name === 'kb') loadKb();
   if (name === 'settings') loadSettings();
   if (name === 'privacy') loadPrivacy();
+  if (name === 'agents') loadAgents();
 }
 
 document.querySelectorAll('nav button').forEach((button) => {
@@ -301,4 +302,206 @@ $('#syncKnowledge').addEventListener('click', async () => {
   } catch (error) {
     $('#knowledgeMsg').textContent = error.message;
   }
+});
+
+
+let selectedAgent = null;
+let agentList = [];
+
+async function loadAgents() {
+  try {
+    agentList = await api('/agents');
+    const list = $('#alist');
+    list.replaceChildren();
+    agentList.forEach((agent) => {
+      const li = el('li');
+      li.append(el('span', 't', agent.name), el('span', 'd', agent.description));
+      li.addEventListener('click', () => selectAgent(agent.id));
+      list.append(li);
+    });
+    const select = $('#scheduleAgent');
+    select.replaceChildren();
+    agentList.forEach((agent) => select.append(new Option(agent.name, agent.id)));
+    if (!selectedAgent || !agentList.some((a) => a.id === selectedAgent)) selectedAgent = agentList[0]?.id || null;
+    renderAgentEditor();
+    await Promise.all([loadApprovals(), loadInbox(), loadBrain(), loadSchedules()]);
+  } catch (error) {
+    $('#agentMsg').textContent = error.message;
+  }
+}
+
+function renderAgentEditor() {
+  const agent = agentList.find((a) => a.id === selectedAgent);
+  const pane = $('#agentEditor');
+  pane.replaceChildren();
+  if (!agent) {
+    pane.append(el('p', 'empty', 'Select an agent.'));
+    return;
+  }
+  const title = el('h3', null, agent.name);
+  title.style.marginTop = '0';
+  const description = el('p', 'hint', agent.description);
+  const row = el('div', 'row');
+  const label = el('label', null, 'Permission');
+  const select = document.createElement('select');
+  ['read_only', 'ask_first', 'always_allow'].forEach((mode) => select.append(new Option(mode.replace('_', ' '), mode)));
+  select.value = agent.permission_mode;
+  const save = el('button', 'primary', 'Save');
+  save.addEventListener('click', async () => {
+    try {
+      const updated = await api('/agents/' + encodeURIComponent(agent.id), {
+        method: 'PATCH',
+        body: JSON.stringify({ permissionMode: select.value })
+      });
+      agent.permission_mode = updated.permission_mode;
+      $('#agentMsg').textContent = 'Permission saved.';
+    } catch (error) { $('#agentMsg').textContent = error.message; }
+  });
+  row.append(label, select, save);
+  pane.append(title, description, row);
+}
+
+function selectAgent(id) {
+  selectedAgent = id;
+  renderAgentEditor();
+}
+
+async function loadApprovals() {
+  const list = $('#approvalList');
+  try {
+    const approvals = await api('/agent/approvals?status=pending&limit=50');
+    list.replaceChildren();
+    if (!approvals.length) list.append(el('li', 'empty', 'No pending approvals.'));
+    approvals.forEach((approval) => {
+      const li = el('li');
+      const body = el('div');
+      body.append(el('b', null, approval.action_type), el('div', null, approval.reason));
+      const actions = el('div', 'row');
+      const yes = el('button', 'primary', 'Approve');
+      const no = el('button', 'danger', 'Reject');
+      yes.addEventListener('click', () => resolveApproval(approval.id, 'approved'));
+      no.addEventListener('click', () => resolveApproval(approval.id, 'rejected'));
+      actions.append(yes, no);
+      li.append(body, actions);
+      list.append(li);
+    });
+  } catch (error) { list.append(el('li', 'empty', error.message)); }
+}
+
+async function resolveApproval(id, decision) {
+  try {
+    await api('/agent/approvals/' + encodeURIComponent(id) + '/resolve', {
+      method: 'POST',
+      body: JSON.stringify({ decision })
+    });
+    loadApprovals();
+    loadInbox();
+  } catch (error) { $('#agentMsg').textContent = error.message; }
+}
+
+async function loadInbox() {
+  const list = $('#inboxList');
+  try {
+    const items = await api('/agent/inbox?limit=30');
+    list.replaceChildren();
+    if (!items.length) list.append(el('li', 'empty', 'Inbox is empty.'));
+    items.forEach((item) => {
+      const li = el('li');
+      li.className = 'inbox-item';
+      li.append(el('b', null, item.title), el('span', null, item.body));
+      if (item.status !== 'read') {
+        const read = el('button', null, 'Mark read');
+        read.addEventListener('click', async () => {
+          await api('/agent/inbox/' + encodeURIComponent(item.id), { method: 'PATCH', body: JSON.stringify({ status: 'read' }) });
+          loadInbox();
+        });
+        li.append(read);
+      }
+      list.append(li);
+    });
+  } catch (error) { list.append(el('li', 'empty', error.message)); }
+}
+
+async function loadBrain(query = '') {
+  const list = $('#brainList');
+  try {
+    const items = query
+      ? await api('/agent/brain/search?q=' + encodeURIComponent(query) + '&limit=50')
+      : await api('/agent/brain?limit=50');
+    list.replaceChildren();
+    if (!items.length) list.append(el('li', 'empty', 'No Brain memories found.'));
+    items.forEach((item) => {
+      const li = el('li');
+      const body = el('div');
+      body.append(el('b', null, item.title), el('span', null, item.kind + ' · ' + item.content.slice(0, 420)));
+      const del = el('button', 'danger', 'Delete');
+      del.addEventListener('click', async () => {
+        await api('/agent/brain/' + encodeURIComponent(item.id), { method: 'DELETE' });
+        loadBrain($('#brainSearch').value);
+      });
+      li.append(body, del);
+      list.append(li);
+    });
+  } catch (error) { list.append(el('li', 'empty', error.message)); }
+}
+
+async function loadSchedules() {
+  const list = $('#scheduleList');
+  try {
+    const schedules = await api('/agent/schedules');
+    list.replaceChildren();
+    if (!schedules.length) list.append(el('li', 'empty', 'No schedules configured.'));
+    schedules.forEach((schedule) => {
+      const li = el('li');
+      const name = agentList.find((a) => a.id === schedule.agent_id)?.name || schedule.agent_id;
+      li.append(el('b', null, name + ' · every ' + Math.round(schedule.interval_ms / 60000) + ' min'), el('span', null, schedule.prompt));
+      const toggle = el('button', schedule.enabled ? 'danger' : null, schedule.enabled ? 'Pause' : 'Resume');
+      toggle.addEventListener('click', async () => {
+        await api('/agent/schedules/' + encodeURIComponent(schedule.id), { method: 'PATCH', body: JSON.stringify({ enabled: !schedule.enabled }) });
+        loadSchedules();
+      });
+      const remove = el('button', 'danger', 'Delete');
+      remove.addEventListener('click', async () => {
+        await api('/agent/schedules/' + encodeURIComponent(schedule.id), { method: 'DELETE' });
+        loadSchedules();
+      });
+      li.append(toggle, remove);
+      list.append(li);
+    });
+  } catch (error) { list.append(el('li', 'empty', error.message)); }
+}
+
+$('#runAgent').addEventListener('click', async () => {
+  if (!selectedAgent) return;
+  const request = $('#agentRequest').value.trim();
+  if (!request) return;
+  try {
+    const result = await api('/agents/' + encodeURIComponent(selectedAgent) + '/run', {
+      method: 'POST',
+      body: JSON.stringify({ request, meetingId: $('#agentMeetingId').value.trim() || undefined })
+    });
+    $('#agentMsg').textContent = result.answer || 'Agent completed.';
+    $('#agentRequest').value = '';
+    await Promise.all([loadInbox(), loadApprovals(), loadBrain()]);
+  } catch (error) { $('#agentMsg').textContent = error.message; }
+});
+
+$('#brainSearchBtn').addEventListener('click', () => loadBrain($('#brainSearch').value.trim()));
+$('#brainSearch').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter') loadBrain($('#brainSearch').value.trim());
+});
+
+$('#addSchedule').addEventListener('click', async () => {
+  const agentId = $('#scheduleAgent').value;
+  const prompt = $('#schedulePrompt').value.trim();
+  const minutes = Number($('#scheduleMinutes').value);
+  if (!agentId || !prompt || !Number.isFinite(minutes)) return;
+  try {
+    await api('/agent/schedules', {
+      method: 'POST',
+      body: JSON.stringify({ agentId, prompt, intervalMs: Math.round(minutes * 60000) })
+    });
+    $('#schedulePrompt').value = '';
+    loadSchedules();
+  } catch (error) { $('#agentMsg').textContent = error.message; }
 });

@@ -116,4 +116,23 @@ For semantic RAG, configure the local embedding endpoint and dimension:
 
 ## CRM webhook
 
-Set `OLI_CRM_WEBHOOK_URL` to an HTTP/HTTPS automation endpoint. Optionally set `OLI_CRM_WEBHOOK_TOKEN` for a Bearer token. When a meeting ends, Oli can POST the meeting record, summary, MEDDPICC fields and commitment statuses. Audio is never included in the CRM payload.
+Set `OLI_CRM_WEBHOOK_URL` to an HTTP/HTTPS automation endpoint. Optionally set `OLI_CRM_WEBHOOK_TOKEN` for a Bearer token. When a meeting ends, Oli queues a reviewable approval for the structured meeting record, summary, MEDDPICC fields and commitment statuses. The external POST occurs only after approval. Audio is never included in the CRM payload.
+
+
+## Agent workbench
+
+Start Oli normally and open Dashboard → Agents. The default agents are:
+
+- Meeting Analyst — always-allow for Brain memory and Inbox drafts only.
+- Follow-up Planner — ask-first for commitments, Obsidian and CRM side effects.
+- Local Researcher — read-only.
+
+The Brain is shared across agents and stored in the same local SQLite file. Schedules are local fixed intervals between 1 minute and 7 days.
+
+MCP can run agents against the same state:
+
+    npm run mcp -- --db "/absolute/path/to/oli.db" --config "/absolute/path/to/config.json"
+
+Meeting-complete CRM sync is approval-gated. Review it in Dashboard → Agents or through oli_list_approvals / oli_resolve_approval before the external webhook is called.
+
+See docs/agents.md for the full lifecycle and privacy behavior.

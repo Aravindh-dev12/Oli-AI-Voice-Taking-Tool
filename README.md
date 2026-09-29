@@ -14,6 +14,7 @@ Oli is a tray-resident desktop meeting copilot designed around a black notch-sty
 - **Local MCP hub:** stdio tools expose meetings, transcripts, commitments, MEDDPICC, and knowledge search to local agents.
 - **Local integrations:** Markdown/Notion-export indexing, Obsidian meeting-note sync, and an opt-in generic CRM webhook for completed-meeting data.
 - **Privacy controls:** retention, cleanup, deletion, deterministic JSON export, and provider-mode visibility.
+- **Agent workbench:** Turnstone-inspired shared local Brain, focused agents, Read Only / Ask First / Always Allow permissions, approval queue, Inbox, and local interval schedules.
 - **Quality tooling:** Node tests, Rust unit tests, syntax checks, structured redacted logs, GitHub Actions CI, and native release workflows.
 
 ## Architecture
@@ -122,7 +123,7 @@ Auto mode uses native Whisper + local chat when both are configured.
 
 ## Integrations
 
-Set `OLI_KNOWLEDGE_DIR` for a local Markdown folder. This also accepts exported Notion Markdown. Set `OLI_OBSIDIAN_VAULT_PATH` for automatic meeting-note export to an Obsidian vault, and optionally set `OLI_CRM_WEBHOOK_URL` plus `OLI_CRM_WEBHOOK_TOKEN` for an external CRM/automation webhook. CRM export is opt-in and sends structured meeting summary, MEDDPICC and commitments rather than raw audio.
+Set `OLI_KNOWLEDGE_DIR` for a local Markdown folder. This also accepts exported Notion Markdown. Set `OLI_OBSIDIAN_VAULT_PATH` for automatic meeting-note export to an Obsidian vault, and optionally set `OLI_CRM_WEBHOOK_URL` plus `OLI_CRM_WEBHOOK_TOKEN` for an external CRM/automation webhook. CRM export is opt-in and now approval-gated; approved exports send structured meeting summary, MEDDPICC and commitments rather than raw audio.
 
 ## Dashboard
 
@@ -137,6 +138,20 @@ The dashboard contains:
 - trusted battlecards / pricing / product knowledge
 - AI provider configuration
 - privacy and retention controls
+
+## Agent workbench
+
+Oli now has a Turnstone-inspired local agent layer around the meeting engine:
+
+- Shared Brain for people, projects, decisions, facts, meetings and commitments.
+- Meeting Analyst, Follow-up Planner and Local Researcher agents.
+- Permission modes: read_only, ask_first, always_allow.
+- Approval-gated side effects with an auditable local trail.
+- Local Inbox for agent results and follow-up drafts.
+- Optional local interval schedules from 1 minute to 7 days.
+- MCP access to Brain, agents, approvals, Inbox and schedules.
+
+After a meeting ends, Oli seeds the shared Brain and runs the Meeting Analyst when an AI runtime is available. CRM synchronization is presented as an approval instead of an automatic external write. See docs/agents.md.
 
 ## MCP
 

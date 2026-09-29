@@ -2,17 +2,27 @@ import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { openDb } from '../server/db.js';
+import { loadConfig } from '../server/config.js';
+import { createAiRuntime } from '../server/ai/index.js';
 import { searchKnowledge, searchTranscript, getMeetingContext } from '../server/rag.js';
+import { initAgentStore, listAgents, runAgent, listInbox, listApprovals, resolveApproval, listSchedules, searchBrain } from '../server/agents.js';
 
 const PROTOCOL_VERSION = '2026-07-28';
 const args = process.argv.slice(2);
 const dbFlag = args.indexOf('--db');
+const configFlag = args.indexOf('--config');
 const dbPath = dbFlag >= 0 && args[dbFlag + 1]
   ? path.resolve(args[dbFlag + 1])
   : path.resolve(process.env.OLI_DB_PATH || 'data/oli.db');
+const configPath = configFlag >= 0 && args[configFlag + 1]
+  ? path.resolve(args[configFlag + 1])
+  : path.resolve(process.env.OLI_CONFIG_PATH || 'data/config.json');
+const cfg = loadConfig(configPath);
+const ai = createAiRuntime(cfg);
 
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = openDb(dbPath);
+initAgentStore(db);
 
 const tools = [
   {
@@ -45,6 +55,66 @@ const tools = [
     name: 'oli_get_meddpicc',
     description: 'Get persisted MEDDPICC fields for one meeting. Fields are evidence extracted from the local meeting transcript; empty fields mean no evidence was stored.',
     inputSchema: { type: 'object', required: ['meetingId'], properties: { meetingId: { type: 'string' } } }
+  },
+  {
+    name: 'oli_list_agents',
+    description: 'List built-in local agents and their permission modes.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'oli_run_agent',
+    description: 'Run a local agent using shared Brain context and optional meeting context.',
+    inputSchema: {
+      type: 'object',
+      required: ['agentId', 'request'],
+      properties: {
+        agentId: { type: 'string' },
+        request: { type: 'string', maxLength: 4000 },
+        meetingId: { type: 'string' }
+      }
+    }
+  },
+  {
+    name: 'oli_search_brain',
+    description: 'Search shared local Brain memories.',
+    inputSchema: {
+      type: 'object',
+      required: ['query'],
+      properties: { query: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 } }
+    }
+  },
+  {
+    name: 'oli_list_inbox',
+    description: 'List local agent Inbox results.',
+    inputSchema: {
+      type: 'object',
+      properties: { status: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 200 } }
+    }
+  },
+  {
+    name: 'oli_list_approvals',
+    description: 'List pending or resolved agent approvals.',
+    inputSchema: {
+      type: 'object',
+      properties: { status: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 200 } }
+    }
+  },
+  {
+    name: 'oli_resolve_approval',
+    description: 'Approve or reject an agent side effect.',
+    inputSchema: {
+      type: 'object',
+      required: ['approvalId', 'decision'],
+      properties: {
+        approvalId: { type: 'string' },
+        decision: { type: 'string', enum: ['approved', 'rejected'] }
+      }
+    }
+  },
+  {
+    name: 'oli_list_schedules',
+    description: 'List persisted local agent schedules.',
+    inputSchema: { type: 'object', properties: {} }
   },
   {
     name: 'oli_list_commitments',
@@ -92,6 +162,39 @@ function handleTool(name, input = {}) {
       if (!context) throw new Error('Meeting not found.');
       return context.meddpicc || { meetingId: input.meetingId, empty: true };
     }
+
+    case 'oli_list_agents':
+      return listAgents(db);
+
+    case 'oli_run_agent':
+      return runAgent({
+        db,
+        ai,
+        cfg,
+        agentId: String(input.agentId || ''),
+        request: String(input.request || ''),
+        meetingId: input.meetingId ? String(input.meetingId) : null
+      });
+
+    case 'oli_search_brain':
+      return searchBrain(db, input.query, input.limit);
+
+    case 'oli_list_inbox':
+      return listInbox(db, { status: String(input.status || ''), limit: input.limit });
+
+    case 'oli_list_approvals':
+      return listApprovals(db, String(input.status || 'pending'), input.limit);
+
+    case 'oli_resolve_approval':
+      return resolveApproval({
+        db,
+        cfg,
+        approvalId: String(input.approvalId || ''),
+        decision: String(input.decision || '')
+      });
+
+    case 'oli_list_schedules':
+      return listSchedules(db);
 
     case 'oli_list_commitments': {
       const limit = Math.min(Math.max(Number(input.limit) || 50, 1), 100);
@@ -150,6 +253,7 @@ input.on('line', (line) => {
 
 function shutdown() {
   input.close();
+  ai.close();
   db.close();
 }
 
