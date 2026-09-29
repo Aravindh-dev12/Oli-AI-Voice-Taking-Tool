@@ -5,7 +5,10 @@ import { openDb } from '../server/db.js';
 import { loadConfig } from '../server/config.js';
 import { createAiRuntime } from '../server/ai/index.js';
 import { searchKnowledge, searchTranscript, getMeetingContext } from '../server/rag.js';
-import { initAgentStore, listAgents, runAgent, listInbox, listApprovals, resolveApproval, listSchedules, searchBrain } from '../server/agents.js';
+import { initAgentStore, listAgents, runAgent, listInbox, listApprovals, resolveApproval, listSchedules, searchBrain, createSchedule } from '../server/agents.js';
+import { initSkillsStore, listSkills, getSkill } from '../server/skills.js';
+import { initSourceRegistry, listRegisteredSources, syncRegisteredSource } from '../server/knowledge.js';
+import { initOrchestrationStore, listFamilies, listJobs, getJob, retryJob, cancelJob, createHandoff, listHandoffs, createBatch, getBatch } from '../server/orchestration.js';
 
 const PROTOCOL_VERSION = '2026-07-28';
 const args = process.argv.slice(2);
@@ -23,6 +26,9 @@ const ai = createAiRuntime(cfg);
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = openDb(dbPath);
 initAgentStore(db);
+initSkillsStore(db);
+initSourceRegistry(db);
+initOrchestrationStore(db);
 
 const tools = [
   {
@@ -117,6 +123,72 @@ const tools = [
     inputSchema: { type: 'object', properties: {} }
   },
   {
+    name: 'oli_list_skills',
+    description: 'List reusable local agent skills.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'oli_list_sources',
+    description: 'List registered local knowledge sources.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'oli_sync_source',
+    description: 'Sync one registered local Markdown source.',
+    inputSchema: { type: 'object', required: ['sourceId'], properties: { sourceId: { type: 'string' } } }
+  },
+  {
+    name: 'oli_list_families',
+    description: 'List local agent families.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'oli_list_jobs',
+    description: 'List durable local agent jobs.',
+    inputSchema: { type: 'object', properties: { status: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 200 } } }
+  },
+  {
+    name: 'oli_get_job',
+    description: 'Get one durable local agent job.',
+    inputSchema: { type: 'object', required: ['jobId'], properties: { jobId: { type: 'string' } } }
+  },
+  {
+    name: 'oli_retry_job',
+    description: 'Retry a failed durable local agent job.',
+    inputSchema: { type: 'object', required: ['jobId'], properties: { jobId: { type: 'string' } } }
+  },
+  {
+    name: 'oli_cancel_job',
+    description: 'Cancel a queued or processing local agent job.',
+    inputSchema: { type: 'object', required: ['jobId'], properties: { jobId: { type: 'string' } } }
+  },
+  {
+    name: 'oli_list_handoffs',
+    description: 'List durable agent handoffs.',
+    inputSchema: { type: 'object', properties: { status: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 200 } } }
+  },
+  {
+    name: 'oli_create_handoff',
+    description: 'Queue a durable handoff to another local agent.',
+    inputSchema: {
+      type: 'object', required: ['toAgentId','request'],
+      properties: { fromAgentId: { type: 'string' }, toAgentId: { type: 'string' }, parentRunId: { type: 'string' }, request: { type: 'string' }, context: { type: 'object' } }
+    }
+  },
+  {
+    name: 'oli_get_batch',
+    description: 'Get one parallel agent batch and its child jobs.',
+    inputSchema: { type: 'object', required: ['batchId'], properties: { batchId: { type: 'string' } } }
+  },
+  {
+    name: 'oli_create_batch',
+    description: 'Queue up to eight independent local agents as a durable parallel batch.',
+    inputSchema: {
+      type: 'object', required: ['items'],
+      properties: { title: { type: 'string' }, items: { type: 'array', maxItems: 8 } }
+    }
+  },
+  {
     name: 'oli_list_commitments',
     description: 'List action items/commitments, optionally scoped to a meeting.',
     inputSchema: {
@@ -195,6 +267,48 @@ function handleTool(name, input = {}) {
 
     case 'oli_list_schedules':
       return listSchedules(db);
+
+    case 'oli_list_skills':
+      return listSkills(db);
+
+    case 'oli_list_sources':
+      return listRegisteredSources(db);
+
+    case 'oli_sync_source':
+      return syncRegisteredSource(db, String(input.sourceId || ''));
+
+    case 'oli_list_families':
+      return listFamilies(db);
+
+    case 'oli_list_jobs':
+      return listJobs(db, { status: String(input.status || ''), limit: input.limit });
+
+    case 'oli_get_job':
+      return getJob(db, String(input.jobId || ''));
+
+    case 'oli_retry_job':
+      return retryJob(db, String(input.jobId || ''));
+
+    case 'oli_cancel_job':
+      return cancelJob(db, String(input.jobId || ''));
+
+    case 'oli_list_handoffs':
+      return listHandoffs(db, String(input.status || ''), input.limit);
+
+    case 'oli_create_handoff':
+      return createHandoff(db, {
+        fromAgentId: input.fromAgentId ? String(input.fromAgentId) : null,
+        toAgentId: String(input.toAgentId || ''),
+        parentRunId: input.parentRunId ? String(input.parentRunId) : null,
+        request: String(input.request || ''),
+        context: input.context || {}
+      });
+
+    case 'oli_get_batch':
+      return getBatch(db, String(input.batchId || ''));
+
+    case 'oli_create_batch':
+      return createBatch(db, { title: input.title, items: input.items || [] });
 
     case 'oli_list_commitments': {
       const limit = Math.min(Math.max(Number(input.limit) || 50, 1), 100);
