@@ -3,6 +3,7 @@ import path from 'node:path';
 import readline from 'node:readline';
 import { openDb } from '../server/db.js';
 import { searchKnowledge, searchTranscript, getMeetingContext } from '../server/rag.js';
+import { listAgents, runAgent, listInbox, listApprovals, resolveApproval, listSchedules, searchBrain, listBrainMemories } from '../server/agents.js';
 
 const PROTOCOL_VERSION = '2026-07-28';
 const args = process.argv.slice(2);
@@ -92,6 +93,39 @@ function handleTool(name, input = {}) {
       if (!context) throw new Error('Meeting not found.');
       return context.meddpicc || { meetingId: input.meetingId, empty: true };
     }
+
+    case 'oli_list_agents':
+      return listAgents(db);
+
+    case 'oli_run_agent':
+      return runAgent({
+        db,
+        ai: globalThis.__oliAiRuntime,
+        cfg: globalThis.__oliAgentConfig || { aiTimeoutMs: 15000, obsidianVaultPath: '', crmWebhookUrl: '', crmWebhookToken: '' },
+        agentId: String(input.agentId || ''),
+        request: String(input.request || ''),
+        meetingId: input.meetingId ? String(input.meetingId) : null
+      });
+
+    case 'oli_search_brain':
+      return searchBrain(db, input.query, input.limit);
+
+    case 'oli_list_inbox':
+      return listInbox(db, { status: String(input.status || ''), limit: input.limit });
+
+    case 'oli_list_approvals':
+      return listApprovals(db, String(input.status || 'pending'), input.limit);
+
+    case 'oli_resolve_approval':
+      return resolveApproval({
+        db,
+        cfg: globalThis.__oliAgentConfig || { aiTimeoutMs: 15000, obsidianVaultPath: '', crmWebhookUrl: '', crmWebhookToken: '' },
+        approvalId: String(input.approvalId || ''),
+        decision: String(input.decision || '')
+      });
+
+    case 'oli_list_schedules':
+      return listSchedules(db);
 
     case 'oli_list_commitments': {
       const limit = Math.min(Math.max(Number(input.limit) || 50, 1), 100);
