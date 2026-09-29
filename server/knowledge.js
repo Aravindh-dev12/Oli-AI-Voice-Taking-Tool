@@ -54,6 +54,10 @@ export function syncKnowledge(db, rootPath, sourceId = 'legacy') {
       const content = fs.readFileSync(filePath, 'utf8').slice(0, MAX_FILE_BYTES);
       const hash = digest(content);
       const prior = existing.get(filePath);
+      const owner = db.prepare('SELECT source_id FROM kb_sources WHERE file_path=?').get(filePath);
+      if (owner && owner.source_id !== sourceId) {
+        throw new Error('Source overlap: ' + filePath + ' is already indexed by source ' + owner.source_id + '. Use one source per file.');
+      }
 
       if (prior && prior.content_hash === hash) {
         skipped += 1;
