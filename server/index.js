@@ -22,6 +22,7 @@ import {
   retryJob, createHandoff, listHandoffs, createBatch, listBatches, getBatch, startJobScheduler
 } from './orchestration.js';
 import { purgeBrainForMeeting, upsertBrainMemory } from './brain.js';
+import { initCtaStore, createCtaAction, settleCtaAction, verifyCtaWebhook } from './cta.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -79,6 +80,7 @@ export function createServer({ dbPath, configPath }) {
   initAgentStore(db);
   initSkillsStore(db);
   initOrchestrationStore(db);
+  initCtaStore(db);
   const clients = new Map();
   const stopAgentScheduler = startJobScheduler({
     db,
@@ -141,6 +143,27 @@ export function createServer({ dbPath, configPath }) {
   });
 
   app.get('/api/settings', (_, res) => res.json(redact(cfg)));
+
+  app.post('/api/cta/actions', (req, res) => {
+    try {
+      const action = createCtaAction(db, req.body || {});
+      return res.status(201).json(action);
+    } catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.post('/api/cta/actions/:id/settle', (req, res) => {
+    try {
+      const result = settleCtaAction(db, { ...(req.body || {}), actionId: req.params.id });
+      emit(result.meetingId || req.body?.meetingId, 'cta_settlement_requested', result);
+      return res.json({ success: true, ...result });
+    } catch (error) { return res.status(400).json({ success: false, error: error.message }); }
+  });
+
+  app.post('/api/cta/webhook', (req, res) => {
+    const signature = req.get('x-oli-signature');
+    if (!verifyCtaWebhook(req.body || {}, signature)) return res.status(401).json({ error: 'Invalid webhook signature.' });
+    return res.json({ received: true });
+  });
 
   app.get('/api/kb/sources', (_, res) => res.json(listKnowledgeSources(db)));
 
