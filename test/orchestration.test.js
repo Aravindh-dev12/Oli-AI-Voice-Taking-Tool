@@ -9,7 +9,7 @@ import { listSkills, getSkill, upsertSkill } from '../server/skills.js';
 import { initSourceRegistry, registerSource, syncRegisteredSource, listRegisteredSources, deleteSource } from '../server/knowledge.js';
 import {
   initOrchestrationStore, createHandoff, listHandoffs, createBatch, getBatch,
-  processOneJob, listJobs, enqueueDueSchedules
+  processOneJob, listJobs, enqueueDueSchedules, enqueueJob, retryJob
 } from '../server/orchestration.js';
 import { createSchedule } from '../server/agents.js';
 
@@ -151,6 +151,36 @@ test('due schedules are converted into durable jobs instead of executing work in
     assert.equal(jobs.length, 1);
     assert.equal(listJobs(db).filter((job) => job.status === 'pending').length, 1);
     assert.ok(db.prepare('SELECT 1 FROM agent_schedules WHERE id=? AND next_run_at>?').get(schedule.id, Date.now() - 1));
+  } finally {
+    db.close();
+  }
+});
+
+test('expired processing jobs are recoverable and failed jobs can be manually retried', async () => {
+  const { db } = tempDb();
+  try {
+    initAgentStore(db);
+    initOrchestrationStore(db);
+
+    const job = enqueueJob(db, {
+      payload: { agentId: 'researcher', request: 'Recover this job.' },
+      maxAttempts: 1
+    });
+    db.prepare('UPDATE agent_jobs SET status="processing",lease_until=?,attempts=1 WHERE id=?')
+      .run(Date.now() - 1000, job.id);
+    const recovered = await processOneJob({ db, ai: fakeAi, cfg });
+    assert.equal(recovered.status, 'succeeded');
+
+    const failingAi = { async copilot() { throw new Error('temporary local model outage'); } };
+    const failedJob = enqueueJob(db, {
+      payload: { agentId: 'researcher', request: 'This should fail.' },
+      maxAttempts: 1
+    });
+    const failed = await processOneJob({ db, ai: failingAi, cfg });
+    assert.equal(failed.status, 'failed');
+    const retried = retryJob(db, failedJob.id);
+    assert.equal(retried.status, 'pending');
+    assert.equal(retried.attempts, 1);
   } finally {
     db.close();
   }
