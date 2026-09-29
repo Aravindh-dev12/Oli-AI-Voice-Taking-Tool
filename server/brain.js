@@ -29,7 +29,6 @@ function initBrainStore(db) {
       namespace UNINDEXED,
       source_type UNINDEXED,
       source_id UNINDEXED,
-      content='',
       tokenize='unicode61'
     );
   `);
