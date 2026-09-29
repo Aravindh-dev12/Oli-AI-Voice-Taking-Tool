@@ -38,3 +38,22 @@ Example shape for an MCP client:
         }
       }
     }
+
+
+## Agent tools
+
+The MCP server now exposes the local Turnstone-inspired agent workbench:
+
+- oli_list_agents
+- oli_run_agent
+- oli_search_brain
+- oli_list_inbox
+- oli_list_approvals
+- oli_resolve_approval
+- oli_list_schedules
+
+Pass both the database and config paths when running agent actions so MCP uses the same local AI/provider configuration as Oli:
+
+    npm run mcp -- --db "/absolute/path/to/oli.db" --config "/absolute/path/to/config.json"
+
+Approval-gated actions execute only after oli_resolve_approval with decision approved.
