@@ -27,6 +27,11 @@ function digest(content) {
   return crypto.createHash('sha256').update(content).digest('hex');
 }
 
+function removeKbEntry(db, kbId) {
+  db.prepare('DELETE FROM kb WHERE rowid=?').run(kbId);
+  try { db.prepare('DELETE FROM kb_vectors WHERE rowid=?').run(BigInt(kbId)); } catch {}
+}
+
 export function syncKnowledge(db, rootPath, sourceId = 'legacy') {
   const root = rootPath ? path.resolve(rootPath) : '';
   if (!root || !fs.existsSync(root)) {
@@ -66,7 +71,7 @@ export function syncKnowledge(db, rootPath, sourceId = 'legacy') {
       }
 
       if (prior) {
-        db.prepare('DELETE FROM kb WHERE rowid=?').run(prior.kb_id);
+        removeKbEntry(db, prior.kb_id);
         updated += 1;
       } else {
         added += 1;
@@ -81,7 +86,7 @@ export function syncKnowledge(db, rootPath, sourceId = 'legacy') {
     }
 
     for (const stale of existing.values()) {
-      db.prepare('DELETE FROM kb WHERE rowid=?').run(stale.kb_id);
+      removeKbEntry(db, stale.kb_id);
       db.prepare('DELETE FROM kb_sources WHERE file_path=?').run(stale.file_path);
       removed += 1;
     }
@@ -153,7 +158,7 @@ export function deleteSource(db, sourceId) {
   if (!source) throw new Error('Source not found.');
   const rows = db.prepare('SELECT kb_id FROM kb_sources WHERE source_id=?').all(source.id);
   const tx = db.transaction(() => {
-    for (const row of rows) db.prepare('DELETE FROM kb WHERE rowid=?').run(row.kb_id);
+    for (const row of rows) removeKbEntry(db, row.kb_id);
     db.prepare('DELETE FROM kb_sources WHERE source_id=?').run(source.id);
     db.prepare('DELETE FROM knowledge_sources_registry WHERE id=?').run(source.id);
   });
