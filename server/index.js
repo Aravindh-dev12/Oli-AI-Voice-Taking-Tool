@@ -83,7 +83,8 @@ export function createServer({ dbPath, configPath }) {
   const stopAgentScheduler = startJobScheduler({
     db,
     getAi: () => ai,
-    getCfg: () => cfg
+    getCfg: () => cfg,
+    onError: (error) => logger.warn('agent scheduler error', { reason: error.message })
   });
 
   const emit = (id, event, data) => {
