@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.5.0
+
+- Added Turnstone-inspired local agent workbench with shared Brain, focused agents, permission modes, approvals and Inbox.
+- Added reusable Skills, local source registry and source-overlap protection.
+- Added Agent Families and durable Handoffs.
+- Added SQLite-backed agent jobs with leases, retries, backoff, cancellation and recovery.
+- Added parallel agent batches with persisted child results and aggregated Inbox output.
+- Grounded live meeting whispers in shared Brain context.
+- Made CRM writes explicitly approval-gated and action execution more idempotent.
+- Added Dashboard and MCP surfaces for the orchestration layer.
+- Added orchestration/source/skills regression tests and 1.5.0 runtime metadata.
+
+
 ## 1.3.0
 
 - Added native macOS ScreenCaptureKit dual-channel capture.
