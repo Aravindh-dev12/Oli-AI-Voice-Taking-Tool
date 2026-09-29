@@ -11,6 +11,13 @@ import { syncKnowledge, listKnowledgeSources } from './knowledge.js';
 import { syncMeetingToObsidian } from './obsidian.js';
 import { createVectorStore } from './vector.js';
 import { syncMeetingToCrm } from './crm.js';
+import {
+  initAgentStore, listAgents, updateAgent, runAgent, listInbox, markInbox,
+  listApprovals, createApproval, resolveApproval, listSchedules, createSchedule,
+  updateSchedule, deleteSchedule, startAgentScheduler, searchBrain, listBrainMemories,
+  deleteBrainMemory, seedMeetingBrain
+} from './agents.js';
+import { purgeBrainForMeeting, upsertBrainMemory } from './brain.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -61,7 +68,13 @@ export function createServer({ dbPath, configPath }) {
     try { syncKnowledge(db, cfg.knowledgeDir); } catch (error) { logger.warn('knowledge sync failed', { reason: error.message }); }
   }
   if (vector.enabled && cfg.localEmbeddingUrl) void vector.reindexAll().catch((error) => logger.warn('vector reindex failed', { reason: error.message }));
+  initAgentStore(db);
   const clients = new Map();
+  const stopAgentScheduler = startAgentScheduler({
+    db,
+    getAi: () => ai,
+    getCfg: () => cfg
+  });
 
   const emit = (id, event, data) => {
     clients.get(id)?.forEach((res) => {
@@ -101,7 +114,18 @@ export function createServer({ dbPath, configPath }) {
 
   app.get('/api/health', (_, res) => {
     const status = ai.status();
-    res.json({ ok: true, aiReady: status.ready, ai: status, vector: vector.status(), knowledgeSources: listKnowledgeSources(db).length });
+    const pendingApprovals = q('SELECT COUNT(*) AS count FROM agent_approvals WHERE status="pending"').get().count;
+    const unreadInbox = q('SELECT COUNT(*) AS count FROM agent_inbox WHERE status="unread"').get().count;
+    res.json({
+      ok: true,
+      aiReady: status.ready,
+      ai: status,
+      vector: vector.status(),
+      knowledgeSources: listKnowledgeSources(db).length,
+      agents: listAgents(db).length,
+      pendingApprovals,
+      unreadInbox
+    });
   });
 
   app.get('/api/settings', (_, res) => res.json(redact(cfg)));
@@ -122,9 +146,10 @@ export function createServer({ dbPath, configPath }) {
     const meetingCount = db.prepare('SELECT COUNT(*) AS count FROM meetings').get().count;
     const transcriptCount = db.prepare('SELECT COUNT(*) AS count FROM segments').get().count;
     const kbCount = db.prepare('SELECT COUNT(*) AS count FROM kb').get().count;
+    const brainCount = db.prepare('SELECT COUNT(*) AS count FROM brain_memories').get().count;
     const status = ai.status();
     const localOnly = status.active === 'local-native' || status.active === 'local-http';
-    res.json({ retentionDays: cfg.retentionDays, localOnly, activeProvider: status.active, meetingCount, transcriptCount, kbCount });
+    res.json({ retentionDays: cfg.retentionDays, localOnly, activeProvider: status.active, meetingCount, transcriptCount, kbCount, brainCount });
   });
 
   app.post('/api/privacy', (req, res) => {
@@ -154,6 +179,92 @@ export function createServer({ dbPath, configPath }) {
     }
     if (vector.enabled && cfg.localEmbeddingUrl) void vector.reindexAll().catch((error) => logger.warn('vector reindex failed', { reason: error.message }));
     res.json(redact(cfg));
+  });
+
+  app.get('/api/agents', (_, res) => res.json(listAgents(db)));
+
+  app.patch('/api/agents/:id', (req, res) => {
+    try { return res.json(updateAgent(db, req.params.id, req.body || {})); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.post('/api/agents/:id/run', async (req, res) => {
+    try {
+      const result = await runAgent({
+        db,
+        ai,
+        cfg,
+        agentId: req.params.id,
+        request: req.body?.request,
+        meetingId: req.body?.meetingId || null
+      });
+      return res.status(201).json(result);
+    } catch (error) {
+      return res.status(502).json({ error: 'Agent run failed: ' + error.message });
+    }
+  });
+
+  app.get('/api/agent/inbox', (req, res) => res.json(listInbox(db, {
+    status: String(req.query.status || ''),
+    limit: req.query.limit
+  })));
+
+  app.patch('/api/agent/inbox/:id', (req, res) => {
+    try { return res.json(markInbox(db, req.params.id, String(req.body?.status || 'read'))); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.get('/api/agent/approvals', (req, res) => res.json(listApprovals(db, String(req.query.status || 'pending'), req.query.limit)));
+
+  app.post('/api/agent/approvals/:id/resolve', async (req, res) => {
+    try {
+      const result = await resolveApproval({
+        db,
+        cfg,
+        approvalId: req.params.id,
+        decision: String(req.body?.decision || '')
+      });
+      return res.json(result);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+  });
+
+  app.get('/api/agent/brain', (req, res) => res.json(listBrainMemories(db, {
+    kind: req.query.kind,
+    namespace: req.query.namespace,
+    limit: req.query.limit
+  })));
+
+  app.get('/api/agent/brain/search', (req, res) => res.json(searchBrain(db, req.query.q, req.query.limit)));
+
+  app.post('/api/agent/brain', (req, res) => {
+    try { return res.status(201).json(upsertBrainMemory(db, req.body || {})); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.delete('/api/agent/brain/:id', (req, res) => {
+    try {
+      if (!deleteBrainMemory(db, req.params.id)) return res.sendStatus(404);
+      return res.json({ ok: true });
+    } catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.get('/api/agent/schedules', (_, res) => res.json(listSchedules(db)));
+
+  app.post('/api/agent/schedules', (req, res) => {
+    try { return res.status(201).json(createSchedule(db, req.body || {})); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.patch('/api/agent/schedules/:id', (req, res) => {
+    try { return res.json(updateSchedule(db, req.params.id, req.body || {})); }
+    catch (error) { return res.status(400).json({ error: error.message }); }
+  });
+
+  app.delete('/api/agent/schedules/:id', (req, res) => {
+    try { return res.json(deleteSchedule(db, req.params.id)); }
+    catch (error) { return res.status(404).json({ error: error.message }); }
   });
 
   app.get('/api/meetings', (_, res) => {
@@ -330,8 +441,24 @@ export function createServer({ dbPath, configPath }) {
     });
     tx();
     logger.info('meeting ended', { meetingId: id, segments: segments.length, actions: items.length });
+    try {
+      seedMeetingBrain(db, id);
+    } catch (error) {
+      logger.warn('meeting Brain seed failed', { meetingId: id, reason: error.message });
+    }
+    if (segments.length && ai.status().ready) {
+      void runAgent({
+        db,
+        ai,
+        cfg,
+        agentId: 'meeting-analyst',
+        meetingId: id,
+        request: 'Review this completed meeting. Store only durable, evidence-backed people, projects, decisions, risks, facts and commitments in the shared Brain. Create a concise review item for the Inbox. Do not propose external side effects.'
+      }).catch((error) => logger.warn('meeting analyst failed', { meetingId: id, reason: error.message }));
+    }
     let obsidianPath = null;
     let crmSynced = false;
+    let crmApprovalId = null;
     if (cfg.obsidianVaultPath) {
       try {
         obsidianPath = syncMeetingToObsidian(db, id, cfg.obsidianVaultPath);
@@ -341,24 +468,19 @@ export function createServer({ dbPath, configPath }) {
     }
     if (cfg.crmWebhookUrl) {
       try {
-        const meddpicc = q('SELECT metrics, economic_buyer, decision_criteria, decision_process, paper_process, identify_pain, champion, competition FROM meeting_intelligence WHERE meeting_id=?').get(id);
-        const actions = q('SELECT id, task, assignee, status FROM actions WHERE meeting_id=? ORDER BY id').all(id);
-        const meetingForSync = q('SELECT * FROM meetings WHERE id=?').get(id);
-        const crm = await syncMeetingToCrm({
-          meeting: meetingForSync,
-          meddpicc,
-          actions,
-          webhookUrl: cfg.crmWebhookUrl,
-          token: cfg.crmWebhookToken,
-          timeoutMs: cfg.aiTimeoutMs
+        const approval = createApproval(db, {
+          actionType: 'crm_sync',
+          payload: { meetingId: id },
+          reason: 'Meeting-complete CRM export requested. Review the structured summary, MEDDPICC and commitments before allowing the external write.'
         });
-        crmSynced = Boolean(crm.synced);
+        crmApprovalId = approval.id;
+        logger.info('CRM sync approval queued', { meetingId: id, approvalId: approval.id });
       } catch (error) {
-        logger.warn('CRM sync failed', { meetingId: id, reason: error.message });
+        logger.warn('CRM approval queue failed', { meetingId: id, reason: error.message });
       }
     }
     emit(id, 'meeting-ended', { summary });
-    res.json({ summary, items, obsidianPath, crmSynced });
+    res.json({ summary, items, obsidianPath, crmSynced, crmApprovalId });
   });
 
   app.get('/api/meetings/:id/agenda', (req, res) => {
