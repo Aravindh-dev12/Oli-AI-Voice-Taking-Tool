@@ -21,8 +21,7 @@ export function createNativeHudManager({ onEvent = () => {}, onError = () => {},
   function send(payload) {
     if (!child?.stdin?.writable) return false;
     try {
-      child.stdin.write(JSON.stringify(payload) + '
-');
+      child.stdin.write(JSON.stringify(payload) + '\n');
       return true;
     } catch {
       return false;
@@ -51,8 +50,7 @@ export function createNativeHudManager({ onEvent = () => {}, onError = () => {},
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk) => {
       buffer += chunk;
-      const lines = buffer.split('
-');
+      const lines = buffer.split('\n');
       buffer = lines.pop() || '';
       for (const line of lines) handleLine(line);
     });
@@ -77,8 +75,7 @@ export function createNativeHudManager({ onEvent = () => {}, onError = () => {},
   async function stop() {
     if (!child) return;
     const current = child;
-    try { current.stdin.write(JSON.stringify({ type: 'command', command: 'quit' }) + '
-'); } catch {}
+    try { current.stdin.write(JSON.stringify({ type: 'command', command: 'quit' }) + '\n'); } catch {}
     await new Promise((resolve) => {
       const timer = setTimeout(() => {
         try { current.kill('SIGTERM'); } catch {}

@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: oli-web
+    runtime: node
+    buildCommand: pnpm install --frozen-lockfile
+    startCommand: npm run start:web
+    healthCheckPath: /api/health
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: OLI_AI_PROVIDER
+        value: auto
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: NVIDIA_MODEL
+        value: meta/llama-3.1-8b-instruct
+      - key: OLI_AI_TIMEOUT_MS
+        value: "15000"
+      - key: OLI_WHISPER_LANGUAGE
+        value: en
+      - key: OLI_WHISPER_THREADS
+        value: "4"
+      - key: DB_PATH
+        value: data/oli.db
+      - key: CONFIG_PATH
+        value: data/config.json
+      - key: OLI_RETENTION_DAYS
+        value: "0"
