@@ -12,6 +12,8 @@ use whisper_rs::{FullParams, SamplingStrategy, WhisperContext, WhisperContextPar
 pub mod attestation;
 pub mod echo_canceller;
 pub mod semantic_router;
+pub mod vault_indexer;
+pub mod throttler;
 
 #[derive(Debug, Serialize)]
 struct SegmentOut {
