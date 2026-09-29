@@ -108,8 +108,7 @@ test('meeting-derived Brain data can be purged without touching unrelated shared
       .run('meeting-2', 'Privacy review', now, now, 'Local only.');
     seedMeetingBrain(db, 'meeting-2');
     const before = searchBrain(db, 'Privacy review').length;
-    db.prepare('INSERT INTO brain_memories(kind,namespace,title,content,source_type,source_id,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)')
-      .run('topic', 'shared', 'Keep local', 'Unrelated durable memory', 'manual', null, now, now);
+    upsertBrainMemory(db, { kind: 'topic', title: 'Keep local', content: 'Unrelated durable memory', sourceType: 'manual' });
     const removed = purgeBrainForMeeting(db, 'meeting-2');
     assert.ok(before >= 1);
     assert.ok(removed >= 1);
