@@ -4,7 +4,7 @@
   "outputDirectory": "renderer",
   "cleanUrls": false,
   "rewrites": [
-    { "source": "/", "destination": "/dashboard.html" }
+    { "source": "/", "destination": "/notch.html" }
   ],
   "headers": [
     {
