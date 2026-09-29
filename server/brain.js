@@ -151,6 +151,22 @@ function seedMeetingBrain(db, meetingId) {
   }
 }
 
+function purgeBrainForMeeting(db, meetingId) {
+  const id = String(meetingId || '');
+  if (!id) return 0;
+  const rows = db.prepare(
+    "SELECT id FROM brain_memories WHERE (source_type='meeting' AND source_id LIKE ?) OR (source_type='agent' AND source_id LIKE ?)"
+  ).all(id + '%', '%:' + id);
+  const tx = db.transaction(() => {
+    for (const row of rows) {
+      db.prepare('DELETE FROM brain_fts WHERE rowid=?').run(row.id);
+      db.prepare('DELETE FROM brain_memories WHERE id=?').run(row.id);
+    }
+  });
+  tx();
+  return rows.length;
+}
+
 function serializeBrainContext(rows) {
   return rows.map((row) => ({
     id: row.id,
