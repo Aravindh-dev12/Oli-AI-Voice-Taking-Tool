@@ -113,7 +113,7 @@ test('meeting-derived Brain data can be purged without touching unrelated shared
     assert.ok(before >= 1);
     assert.ok(removed >= 1);
     assert.equal(searchBrain(db, 'Privacy review').filter((row) => row.source_id === 'meeting-2').length, 0);
-    assert.equal(searchBrain(db, 'Keep local').length, 0);
+    assert.equal(searchBrain(db, 'Keep local').length, 1);
   } finally {
     db.close();
   }
