@@ -185,6 +185,7 @@ function retryJob(db, jobId) {
 }
 
 function createHandoff(db, { fromAgentId = null, toAgentId, parentRunId = null, request, context = {} }) {
+  if (!String(request || '').trim()) throw new Error('request is required for a handoff.');
   if (!db.prepare('SELECT 1 FROM agent_profiles WHERE id=? AND enabled=1').get(String(toAgentId))) throw new Error('Target agent not found or disabled.');
   const id = randomUUID();
   const now = Date.now();
@@ -374,17 +375,23 @@ function enqueueDueSchedules(db) {
   return created;
 }
 
-function startJobScheduler({ db, getAi, getCfg, tickMs = 1000, concurrency = 3 }) {
+function startJobScheduler({ db, getAi, getCfg, onError = () => {}, tickMs = 1000, concurrency = 3 }) {
   const running = new Set();
   const timer = setInterval(() => {
-    enqueueDueSchedules(db);
+    try {
+      enqueueDueSchedules(db);
+    } catch (error) {
+      onError(error);
+    }
     while (running.size < concurrency) {
       const job = claimJob(db);
       if (!job) break;
       running.add(job.id);
       void executeJob({ db, ai: getAi(), cfg: getCfg(), jobId: job.id })
         .then((result) => {
-          db.prepare('UPDATE agent_jobs SET status="succeeded",result_json=?,lease_until=NULL,last_error=NULL,updated_at=? WHERE id=?').run(JSON.stringify(result || {}), Date.now(), job.id);
+          const changed = db.prepare('UPDATE agent_jobs SET status="succeeded",result_json=?,lease_until=NULL,last_error=NULL,updated_at=? WHERE id=? AND status="processing"')
+            .run(JSON.stringify(result || {}), Date.now(), job.id).changes;
+          if (!changed) return;
           const payload = JSON.parse(job.payload_json || '{}');
           if (payload.scheduleId && result?.id) {
             db.prepare('UPDATE agent_schedules SET last_run_id=?,updated_at=? WHERE id=?').run(result.id, Date.now(), payload.scheduleId);
@@ -393,11 +400,13 @@ function startJobScheduler({ db, getAi, getCfg, tickMs = 1000, concurrency = 3 }
         })
         .catch((error) => {
           const current = getJob(db, job.id);
+          if (current.status !== 'processing') return;
           const exhausted = current.attempts >= current.max_attempts;
           const next = Date.now() + Math.min(15 * 60 * 1000, 1000 * 2 ** Math.max(current.attempts - 1, 0));
-          db.prepare('UPDATE agent_jobs SET status=?,available_at=?,lease_until=NULL,last_error=?,updated_at=? WHERE id=?')
+          db.prepare('UPDATE agent_jobs SET status=?,available_at=?,lease_until=NULL,last_error=?,updated_at=? WHERE id=? AND status="processing"')
             .run(exhausted ? 'failed' : 'pending', next, clean(error.message, 2000), Date.now(), job.id);
           updateBatchFromJob(db, { ...current, status: exhausted ? 'failed' : 'pending' }, null, error.message);
+          onError(error);
         })
         .finally(() => running.delete(job.id));
     }
