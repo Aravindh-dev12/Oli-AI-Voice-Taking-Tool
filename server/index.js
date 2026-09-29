@@ -10,7 +10,6 @@ import { createLogger } from './logger.js';
 import { syncKnowledge, listKnowledgeSources } from './knowledge.js';
 import { syncMeetingToObsidian } from './obsidian.js';
 import { createVectorStore } from './vector.js';
-import { syncMeetingToCrm } from './crm.js';
 import {
   initAgentStore, listAgents, updateAgent, runAgent, listInbox, markInbox,
   listApprovals, createApproval, resolveApproval, listSchedules, createSchedule,
@@ -322,6 +321,11 @@ export function createServer({ dbPath, configPath }) {
       try { client.end(); } catch {}
     });
     clients.delete(req.params.id);
+    purgeBrainForMeeting(db, req.params.id);
+    q('DELETE FROM agent_inbox WHERE agent_run_id IN (SELECT id FROM agent_runs WHERE meeting_id=?)').run(req.params.id);
+    q('DELETE FROM agent_approvals WHERE agent_run_id IN (SELECT id FROM agent_runs WHERE meeting_id=?)').run(req.params.id);
+    q('DELETE FROM agent_audit WHERE agent_run_id IN (SELECT id FROM agent_runs WHERE meeting_id=?)').run(req.params.id);
+    q('DELETE FROM agent_runs WHERE meeting_id=?').run(req.params.id);
     res.json({ ok: true });
   });
 
@@ -559,6 +563,7 @@ export function createServer({ dbPath, configPath }) {
     close() {
       clients.forEach((connections) => connections.forEach((res) => { try { res.end(); } catch {} }));
       clients.clear();
+      stopAgentScheduler();
       ai.close();
       db.close();
     }
