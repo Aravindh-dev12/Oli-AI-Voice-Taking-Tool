@@ -365,8 +365,8 @@ function enqueueDueSchedules(db) {
         maxAttempts: 3
       });
       const next = Math.max(now, slot) + schedule.interval_ms;
-      db.prepare('UPDATE agent_schedules SET next_run_at=?,last_run_id=COALESCE(last_run_id,?),updated_at=? WHERE id=?')
-        .run(next, job.id, now, schedule.id);
+      db.prepare('UPDATE agent_schedules SET next_run_at=?,updated_at=? WHERE id=?')
+        .run(next, now, schedule.id);
       created.push(job);
     }
   });
@@ -384,6 +384,10 @@ function startJobScheduler({ db, getAi, getCfg, tickMs = 1000, concurrency = 3 }
       void executeJob({ db, ai: getAi(), cfg: getCfg(), jobId: job.id })
         .then((result) => {
           db.prepare('UPDATE agent_jobs SET status="succeeded",result_json=?,lease_until=NULL,last_error=NULL,updated_at=? WHERE id=?').run(JSON.stringify(result || {}), Date.now(), job.id);
+          const payload = JSON.parse(job.payload_json || '{}');
+          if (payload.scheduleId && result?.id) {
+            db.prepare('UPDATE agent_schedules SET last_run_id=?,updated_at=? WHERE id=?').run(result.id, Date.now(), payload.scheduleId);
+          }
           updateBatchFromJob(db, { ...job, status: 'succeeded' }, result);
         })
         .catch((error) => {
