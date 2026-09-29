@@ -7,13 +7,15 @@ import { fileURLToPath } from 'node:url';
 import { createServer } from '../server/index.js';
 import { createLogger } from '../server/logger.js';
 import { createNativeCaptureManager } from './native-capture.js';
+import { createNativeHudManager } from './native-hud.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = Number(process.env.PORT || 4173);
 const DB_PATH = path.resolve(app.getPath('userData'), process.env.DB_PATH || 'data/oli.db');
 const CONFIG_PATH = path.resolve(app.getPath('userData'), process.env.CONFIG_PATH || 'data/config.json');
 
-let notchWin, dashboardWin, tray, serverInstance, httpServer, nativeCapture;
+let notchWin, dashboardWin, tray, serverInstance, httpServer, nativeCapture, nativeHud;
+let nativeHudActive = false;
 let meetingActive = false;
 const logger = createLogger('desktop');
 let notchGeometry = null;
@@ -65,7 +67,7 @@ function resizeNotch(state = 'pill') {
   notchWin.setBounds(topCenterBounds(size.w, size.h));
 }
 
-function createNotchWindow() {
+function createNotchWindow(showWindow = true) {
   notchGeometry = probeNotchGeometry();
   notchWin = new BrowserWindow({
     ...topCenterBounds(sizes().pill.w, sizes().pill.h),
@@ -81,6 +83,7 @@ function createNotchWindow() {
     alwaysOnTop: true,
     focusable: false,
     backgroundColor: '#00000000',
+    show: showWindow,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -154,9 +157,30 @@ async function boot() {
     onError: (message) => notchWin?.webContents.send('oli:native-capture-error', { message })
   });
 
-  createNotchWindow();
+  nativeHud = createNativeHudManager({
+    onEvent: (payload) => {
+      if (payload?.event === 'dashboard') return openDashboard();
+      if (payload?.event === 'quit') return app.quit();
+      notchWin?.webContents.send('oli:native-hud-command', payload);
+    },
+    onError: (message) => notchWin?.webContents.send('oli:native-hud-error', { message }),
+    onExit: () => {
+      nativeHudActive = false;
+      if (!notchWin?.isDestroyed()) notchWin?.showInactive?.();
+    }
+  });
+  nativeHudActive = nativeHud.available();
+  createNotchWindow(!nativeHudActive);
+  if (nativeHudActive) {
+    const started = nativeHud.start();
+    nativeHudActive = !!started?.active;
+    if (!nativeHudActive) notchWin.showInactive?.();
+  }
   buildTray();
-  globalShortcut.register('Alt+Space', () => notchWin?.webContents.send('oli:toggle-pin'));
+  globalShortcut.register('Alt+Space', () => {
+    if (nativeHudActive) nativeHud.send({ type: 'command', command: 'toggleShelf' });
+    else notchWin?.webContents.send('oli:toggle-pin');
+  });
 }
 
 app.whenReady().then(boot).catch((error) => {
@@ -172,6 +196,8 @@ ipcMain.on('oli:meeting-state', (_e, active) => {
 });
 ipcMain.handle('oli:platform', () => process.platform);
 ipcMain.handle('oli:native-capture-available', () => nativeCapture?.available() ?? false);
+ipcMain.handle('oli:native-hud-active', () => nativeHudActive);
+ipcMain.on('oli:hud-state', (_event, payload) => { if (nativeHudActive && payload) nativeHud?.send(payload); });
 ipcMain.handle('oli:native-capture-start', async (_event, meetingId) => {
   if (process.platform !== 'darwin') return { active: false, reason: 'unsupported-platform' };
   return nativeCapture?.start(String(meetingId)) ?? { active: false, reason: 'native-manager-unavailable' };
@@ -184,9 +210,13 @@ ipcMain.handle('oli:native-capture-stop', async () => {
 const reposition = () => resizeNotch('pill');
 app.on('window-all-closed', (e) => e.preventDefault());
 app.on('before-quit', async (event) => {
-  if (nativeCapture?.active()) {
+  if (nativeCapture?.active() || nativeHud?.active()) {
     event.preventDefault();
-    try { await nativeCapture.stop(); } catch {}
+    try { await nativeCapture?.stop(); } catch {}
+    try { await nativeHud?.stop(); } catch {}
+    nativeHudActive = false;
+    try { httpServer?.close(); } catch {}
+    try { serverInstance?.close(); } catch {}
     app.quit();
     return;
   }

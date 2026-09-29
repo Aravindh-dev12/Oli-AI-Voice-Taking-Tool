@@ -113,3 +113,7 @@ For semantic RAG, configure the local embedding endpoint and dimension:
     npm start
 
 `sovereign:mac` builds the native Swift capture helpers and Rust Whisper core, then builds `llama-server`. Model weights remain external and are not committed to the repository.
+
+## CRM webhook
+
+Set `OLI_CRM_WEBHOOK_URL` to an HTTP/HTTPS automation endpoint. Optionally set `OLI_CRM_WEBHOOK_TOKEN` for a Bearer token. When a meeting ends, Oli can POST the meeting record, summary, MEDDPICC fields and commitment statuses. Audio is never included in the CRM payload.

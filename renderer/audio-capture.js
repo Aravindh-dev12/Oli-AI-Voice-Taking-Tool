@@ -1,6 +1,6 @@
 const DEFAULTS = {
   sampleRate: 16000,
-  chunkSeconds: 6,
+  chunkSeconds: 2,
   silenceRms: 0.008,
   maxPendingUploads: 2
 };

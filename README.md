@@ -12,6 +12,7 @@ Oli is a tray-resident desktop meeting copilot designed around a black notch-sty
 - **Local-first copilot:** local chat service is preferred for sovereign mode; Gemini/NVIDIA are explicit development providers.
 - **SQLite + FTS5:** meetings, transcript segments, commitments, MEDDPICC fields, and trusted knowledge base.
 - **Local MCP hub:** stdio tools expose meetings, transcripts, commitments, MEDDPICC, and knowledge search to local agents.
+- **Local integrations:** Markdown/Notion-export indexing, Obsidian meeting-note sync, and an opt-in generic CRM webhook for completed-meeting data.
 - **Privacy controls:** retention, cleanup, deletion, deterministic JSON export, and provider-mode visibility.
 - **Quality tooling:** Node tests, Rust unit tests, syntax checks, structured redacted logs, GitHub Actions CI, and native release workflows.
 
@@ -119,6 +120,10 @@ Configure a localhost OpenAI-compatible endpoint:
 
 Auto mode uses native Whisper + local chat when both are configured.
 
+## Integrations
+
+Set `OLI_KNOWLEDGE_DIR` for a local Markdown folder. This also accepts exported Notion Markdown. Set `OLI_OBSIDIAN_VAULT_PATH` for automatic meeting-note export to an Obsidian vault, and optionally set `OLI_CRM_WEBHOOK_URL` plus `OLI_CRM_WEBHOOK_TOKEN` for an external CRM/automation webhook. CRM export is opt-in and sends structured meeting summary, MEDDPICC and commitments rather than raw audio.
+
 ## Dashboard
 
 Open it from the notch shelf or the tray/menu bar.
@@ -214,3 +219,7 @@ Then start the local copilot on localhost:
 In another terminal run `npm start`. On macOS, when `OliCaptureService` and `oli-whisper` are available, Oli captures both channels natively and transcribes through the persistent Rust Whisper process. The copilot path remains on the local Llama server.
 
 See `docs/local-llm.md` for model/runtime details and `docs/local-ai.md` for the provider selection boundary.
+
+## Native macOS HUD
+
+On macOS, `OliHUD` is the native SwiftUI/AppKit visual shell for the notch. It is non-activating, content-protected, and receives live transcript/whisper state from the Electron meeting engine. Build it with `npm run build:native:mac`. See `docs/native-hud.md` for the IPC/fallback details.

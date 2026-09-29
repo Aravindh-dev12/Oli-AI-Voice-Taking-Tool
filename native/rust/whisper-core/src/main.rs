@@ -196,7 +196,7 @@ fn parse_args() -> Result<(String, Option<String>, Option<String>, i32)> {
     ))
 }
 
-fn run_stdio(engine: &Engine, default_language: Option<&str>, default_threads: i32) -> Result<()> {
+fn run_stdio(engine: &WhisperEngine, default_language: Option<&str>, default_threads: i32) -> Result<()> {
     let stdin = io::stdin();
     let mut stdout = io::BufWriter::new(io::stdout().lock());
 
@@ -253,41 +253,46 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
 
     #[test]
     fn wav_parser_accepts_canonical_mono_pcm() {
-        let mut writer = hound::WavWriter::new(
-            std::io::Cursor::new(Vec::<u8>::new()),
-            hound::WavSpec {
-                channels: 1,
-                sample_rate: 16_000,
-                bits_per_sample: 16,
-                sample_format: hound::SampleFormat::Int,
-            },
-        ).expect("writer");
-        writer.write_sample(0_i16).expect("sample");
-        writer.write_sample(1000_i16).expect("sample");
-        let cursor = writer.finalize().expect("finalize");
-        let audio = load_audio_bytes(&cursor.into_inner()).expect("valid audio");
+        let mut cursor = std::io::Cursor::new(Vec::<u8>::new());
+        {
+            let mut writer = hound::WavWriter::new(
+                &mut cursor,
+                hound::WavSpec {
+                    channels: 1,
+                    sample_rate: 16_000,
+                    bits_per_sample: 16,
+                    sample_format: hound::SampleFormat::Int,
+                },
+            ).expect("writer");
+            writer.write_sample(0_i16).expect("sample");
+            writer.write_sample(1000_i16).expect("sample");
+            writer.finalize().expect("finalize");
+        }
+        let audio = load_audio_bytes(cursor.get_ref()).expect("valid audio");
         assert_eq!(audio.len(), 2);
         assert!(audio[1] > 0.0);
     }
 
     #[test]
     fn wav_parser_rejects_wrong_sample_rate() {
-        let mut writer = hound::WavWriter::new(
-            std::io::Cursor::new(Vec::<u8>::new()),
-            hound::WavSpec {
-                channels: 1,
-                sample_rate: 44_100,
-                bits_per_sample: 16,
-                sample_format: hound::SampleFormat::Int,
-            },
-        ).expect("writer");
-        writer.write_sample(0_i16).expect("sample");
-        let cursor = writer.finalize().expect("finalize");
-        let error = load_audio_bytes(&cursor.into_inner()).expect_err("must reject");
+        let mut cursor = std::io::Cursor::new(Vec::<u8>::new());
+        {
+            let mut writer = hound::WavWriter::new(
+                &mut cursor,
+                hound::WavSpec {
+                    channels: 1,
+                    sample_rate: 44_100,
+                    bits_per_sample: 16,
+                    sample_format: hound::SampleFormat::Int,
+                },
+            ).expect("writer");
+            writer.write_sample(0_i16).expect("sample");
+            writer.finalize().expect("finalize");
+        }
+        let error = load_audio_bytes(cursor.get_ref()).expect_err("must reject");
         assert!(error.to_string().contains("16000"));
     }
 }
