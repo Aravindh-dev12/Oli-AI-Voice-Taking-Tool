@@ -13,7 +13,7 @@ import { createVectorStore } from './vector.js';
 import {
   initAgentStore, listAgents, updateAgent, runAgent, listInbox, markInbox,
   listApprovals, createApproval, resolveApproval, listSchedules, createSchedule,
-  updateSchedule, deleteSchedule, startAgentScheduler, searchBrain, listBrainMemories,
+  updateSchedule, deleteSchedule, searchBrain, listBrainMemories,
   deleteBrainMemory, seedMeetingBrain
 } from './agents.js';
 import { initSkillsStore, listSkills, upsertSkill, setSkillEnabled } from './skills.js';
@@ -144,7 +144,7 @@ export function createServer({ dbPath, configPath }) {
 
   app.post('/api/kb/sync', async (_, res) => {
     try {
-      const result = syncKnowledge(db, cfg.knowledgeDir);
+      registerSource(db, { id: 'default-knowledge', name: 'Default knowledge folder', rootPath: cfg.knowledgeDir }); const result = syncRegisteredSource(db, 'default-knowledge');
       const vectorResult = vector.enabled && cfg.localEmbeddingUrl ? await vector.reindexAll() : null;
       res.json({ ...result, vector: vectorResult });
     } catch (error) {
@@ -185,7 +185,10 @@ export function createServer({ dbPath, configPath }) {
       timeoutMs: cfg.aiTimeoutMs
     });
     if (cfg.knowledgeDir) {
-      try { syncKnowledge(db, cfg.knowledgeDir); } catch (error) { logger.warn('knowledge sync failed', { reason: error.message }); }
+      try {
+        registerSource(db, { id: 'default-knowledge', name: 'Default knowledge folder', rootPath: cfg.knowledgeDir });
+        syncRegisteredSource(db, 'default-knowledge');
+      } catch (error) { logger.warn('knowledge sync failed', { reason: error.message }); }
     }
     if (vector.enabled && cfg.localEmbeddingUrl) void vector.reindexAll().catch((error) => logger.warn('vector reindex failed', { reason: error.message }));
     res.json(redact(cfg));
@@ -309,7 +312,8 @@ export function createServer({ dbPath, configPath }) {
         cfg,
         agentId: req.params.id,
         request: req.body?.request,
-        meetingId: req.body?.meetingId || null
+        meetingId: req.body?.meetingId || null,
+        skillId: req.body?.skillId || null
       });
       return res.status(201).json(result);
     } catch (error) {
