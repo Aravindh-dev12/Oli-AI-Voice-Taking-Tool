@@ -219,14 +219,14 @@ function createBatch(db, { title = 'Parallel agent run', items = [] }) {
   const tx = db.transaction(() => {
     db.prepare('INSERT INTO agent_batches(id,title,status,total_count,created_at,updated_at) VALUES(?,?,\'queued\',?,?,?)')
       .run(batchId, clean(title, 240) || 'Parallel agent run', items.length, now, now);
-    const insertItem = db.prepare('INSERT INTO agent_batch_items(batch_id,position,job_id,agent_id,request,status) VALUES(?,?,?,?,"queued")');
+    const insertItem = db.prepare('INSERT INTO agent_batch_items(batch_id,position,job_id,agent_id,request,status) VALUES(?,?,?,?,?,?)');
     items.forEach((item, index) => {
       const job = enqueueJob(db, {
         kind: 'agent_run',
         payload: { agentId: String(item.agentId), request: clean(item.request, 4000), meetingId: item.meetingId || null, skillId: item.skillId || null, batchId, batchPosition: index },
         idempotencyKey: 'batch:' + batchId + ':' + index
       });
-      insertItem.run(batchId, index, job.id, String(item.agentId), clean(item.request, 4000));
+      insertItem.run(batchId, index, job.id, String(item.agentId), clean(item.request, 4000), 'queued');
     });
   });
   tx();
@@ -345,10 +345,39 @@ async function processOneJob({ db, ai, cfg }) {
   }
 }
 
+function enqueueDueSchedules(db) {
+  const now = Date.now();
+  const schedules = db.prepare(
+    'SELECT * FROM agent_schedules WHERE enabled=1 AND next_run_at<=? ORDER BY next_run_at LIMIT 20'
+  ).all(now);
+  const created = [];
+  const tx = db.transaction(() => {
+    for (const schedule of schedules) {
+      const slot = schedule.next_run_at;
+      const job = enqueueJob(db, {
+        kind: 'agent_run',
+        payload: {
+          agentId: schedule.agent_id,
+          request: schedule.prompt,
+          scheduleId: schedule.id
+        },
+        idempotencyKey: 'schedule:' + schedule.id + ':' + slot,
+        maxAttempts: 3
+      });
+      const next = Math.max(now, slot) + schedule.interval_ms;
+      db.prepare('UPDATE agent_schedules SET next_run_at=?,last_run_id=COALESCE(last_run_id,?),updated_at=? WHERE id=?')
+        .run(next, job.id, now, schedule.id);
+      created.push(job);
+    }
+  });
+  tx();
+  return created;
+}
+
 function startJobScheduler({ db, getAi, getCfg, tickMs = 1000, concurrency = 3 }) {
   const running = new Set();
   const timer = setInterval(() => {
-    while (running.size < concurrency) {
+    enqueueDueSchedules(db);\n    while (running.size < concurrency) {
       const job = claimJob(db);
       if (!job) break;
       running.add(job.id);
@@ -375,5 +404,5 @@ function startJobScheduler({ db, getAi, getCfg, tickMs = 1000, concurrency = 3 }
 export {
   JOB_STATES, JOB_KINDS, initOrchestrationStore, listFamilies, setFamilyMembers,
   enqueueJob, listJobs, getJob, cancelJob, retryJob, createHandoff, listHandoffs,
-  createBatch, listBatches, getBatch, processOneJob, startJobScheduler
+  createBatch, listBatches, getBatch, processOneJob, enqueueDueSchedules, startJobScheduler
 };
